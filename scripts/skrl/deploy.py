@@ -69,6 +69,9 @@ from skrl.envs.wrappers.torch import wrap_env
 from isaaclab.utils.io.yaml import load_yaml
 
 
+actions_list = []
+
+
 def main():
     cfg = load_yaml(args_cli.config)
     if args_cli.ml_framework.startswith("jax"):
@@ -122,13 +125,16 @@ def main():
                 outputs = runner.agent.act(obs, timestep=0, timesteps=0)
                 actions = outputs[-1].get("mean_actions", outputs[0])
                 # actions = torch.zeros(env.action_space.shape, device=env.unwrapped.device)
+                # actions = torch.round(actions, decimals=2)
                 obs, _, _, _, _ = env.step(actions)
+
+                actions_list.append(actions)
 
             if args_cli.teleop:
                 env._unwrapped.vel_cmd[0] = state.lin_x
                 env._unwrapped.vel_cmd[1] = state.lin_y
                 env._unwrapped.vel_cmd[2] = state.ang_z
-                env._unwrapped.z_cmd = state.base_height
+                env._unwrapped.z_cmd = state.height
 
             env._unwrapped.print_debug()
 
@@ -137,6 +143,46 @@ def main():
                 time.sleep(sleep_time)
 
 
+def plot_actions(action_history, title="Action Commands Over Time"):
+    """
+    Plots a list of action tensors/arrays.
+    Args:
+        action_history: List of tensors or numpy arrays [batch_size, num_actions]
+    """
+    # Convert list of tensors to a single numpy array [timesteps, num_actions]
+    # We assume batch size 1, so we take index 0
+    if isinstance(action_history[0], torch.Tensor):
+        data = torch.stack(action_history).detach().cpu().numpy()
+    else:
+        data = np.array(action_history)
+
+    # If the data has a batch dimension (e.g., [T, 1, N]), squeeze it
+    if data.ndim == 3:
+        data = data.squeeze(1)
+
+    timesteps, num_joints = data.shape
+
+    plt.figure(figsize=(12, 6))
+    for i in range(num_joints):
+        plt.plot(data[:, i], label=f"Joint {i}", alpha=0.8)
+
+    plt.title(title)
+    plt.xlabel("Timestep")
+    plt.ylabel("Action Value (Normalized or Rad)")
+    plt.grid(True, linestyle="--", alpha=0.6)
+
+    # Only show legend if joint count is manageable
+    if num_joints <= 12:
+        plt.legend(loc="upper right", ncol=2)
+
+    plt.tight_layout()
+    plt.show()
+
+
 if __name__ == "__main__":
     with contextlib.suppress(KeyboardInterrupt):
         main()
+
+    import matplotlib.pyplot as plt
+
+    plot_actions(actions_list)
