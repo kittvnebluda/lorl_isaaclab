@@ -302,18 +302,22 @@ def add_custom_logs(runner: Runner, env, log_period: int):
                     asset = env.scene["robot"]
 
                     vel_xy_b = asset.data.root_lin_vel_b[:, :2]
-                    vel_norm = torch.norm(vel_xy_b)
-
-                    command = env.command_manager.get_command("base_direction")
-                    cmd_dir = command[:, :2]
-                    v_pr = torch.sum(vel_xy_b * cmd_dir, dim=1)
+                    vel_norm = torch.norm(vel_xy_b, dim=1)
 
                     runner.agent.track_data("Info / velocity (min)", torch.min(vel_norm).item())
                     runner.agent.track_data("Info / velocity (mean)", torch.mean(vel_norm).item())
                     runner.agent.track_data("Info / velocity (max)", torch.max(vel_norm).item())
-                    runner.agent.track_data("Info / direction_alignment (min)", torch.min(v_pr).item())
-                    runner.agent.track_data("Info / direction_alignment (mean)", torch.mean(v_pr).item())
-                    runner.agent.track_data("Info / direction_alignment (max)", torch.max(v_pr).item())
+
+                    try:
+                        command = env.command_manager.get_command("base_direction")
+                        cmd_dir = command[:, :2]
+                        v_pr = torch.sum(vel_xy_b * cmd_dir, dim=1)
+
+                        runner.agent.track_data("Info / direction_alignment (min)", torch.min(v_pr).item())
+                        runner.agent.track_data("Info / direction_alignment (mean)", torch.mean(v_pr).item())
+                        runner.agent.track_data("Info / direction_alignment (max)", torch.max(v_pr).item())
+                    except:
+                        pass
 
         except Exception as e:
             print(f"[WARNING] Custom logging failed: {e}")
