@@ -46,7 +46,7 @@ class Go1RoughEnvCfg_v0_PLAY(Go1RoughEnvCfg_v0):
         # reduce the number of terrains to save memory
         if self.scene.terrain.terrain_generator is not None:
             self.scene.terrain.terrain_generator.num_rows = 5
-            self.scene.terrain.terrain_generator.num_cols = 8
+            self.scene.terrain.terrain_generator.num_cols = 7
             self.scene.terrain.terrain_generator.curriculum = True
 
         # disable randomization for play

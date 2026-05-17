@@ -42,7 +42,7 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
         "hf_pyramid_slope_inv": terrain_gen.HfInvertedPyramidSlopedTerrainCfg(
             proportion=0.1, slope_range=(0.0, 0.4), platform_width=2.0, border_width=0.25
         ),
-        "hf_square_holes": HfRandomSquareHolesTerrainCfg(),
-        "diamond_walkway": MeshDiamondWalkwayTerrainCfg(),
+        "hf_square_holes": HfRandomSquareHolesTerrainCfg(proportion=0.2),
+        "diamond_walkway": MeshDiamondWalkwayTerrainCfg(proportion=0.2),
     },
 )
