@@ -14,7 +14,7 @@ from isaaclab.utils.types import ArticulationActions
 from isaaclab_assets.robots.unitree import GO1_ACTUATOR_CFG
 from numpy.typing import NDArray
 
-from legged_obstacle_rl.tasks.sim2sim.mujoco.utils import map_indexes, normalize, quat_apply_inverse
+from legged_obstacle_rl.tasks.mujoco.utils import map_indexes, normalize, quat_apply_inverse
 
 # fmt: off
 # Joint Order in MuJoCo
@@ -98,7 +98,6 @@ class VelocityEnv(MujocoEnv, ABC):
             "step/vx_cmd_error": abs(self.vel_cmd[0] - x_vel),
             "step/vy_cmd_error": abs(self.vel_cmd[1] - y_vel),
             "step/wz_cmd_error": abs(wz_cmd_err),
-            "step/body_height_cmd_error": abs(self.z_cmd - self.data.qpos[2]),
         }
 
         self.actions.append(action.copy())

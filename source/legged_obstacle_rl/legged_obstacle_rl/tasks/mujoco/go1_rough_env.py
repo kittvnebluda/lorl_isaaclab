@@ -3,7 +3,7 @@ from importlib.resources import files
 import mujoco
 import numpy as np
 
-from legged_obstacle_rl.tasks.sim2sim.mujoco.velocity_env import VelocityEnv, isaac_home_jpos, mujoco_to_isaac_joints
+from legged_obstacle_rl.tasks.mujoco.velocity_env import VelocityEnv, isaac_home_jpos, mujoco_to_isaac_joints
 
 ISAAC_OFFSET = 0.5
 HS_RESOLUTION = 0.1
@@ -13,14 +13,14 @@ HS_OFFSET_Z = 20.0
 
 class Go1RoughEnv(VelocityEnv):
     def __init__(self, **kwargs):
-        xml_file = str(files("legged_obstacle_rl").joinpath("tasks/sim2sim/mujoco/unitree_go1/scene.xml"))
+        xml_file = str(files("legged_obstacle_rl").joinpath("tasks/mujoco/unitree_go1/scene.xml"))
         super().__init__(xml_file, frame_skip=4, device="cpu", obs_size=235, **kwargs)
 
         x_range = np.arange(-HS_SIZE[0] / 2, HS_SIZE[0] / 2 + HS_RESOLUTION, HS_RESOLUTION)
         y_range = np.arange(-HS_SIZE[1] / 2, HS_SIZE[1] / 2 + HS_RESOLUTION, HS_RESOLUTION)
         self.hs_xv, self.hs_yv = np.meshgrid(x_range, y_range)
 
-    def _get_obs(self):
+    def get_obs(self):
         qpos = self.data.qpos.flatten()
         qvel = self.data.qvel.flatten()
         base_ang_vel = qvel[3:6]

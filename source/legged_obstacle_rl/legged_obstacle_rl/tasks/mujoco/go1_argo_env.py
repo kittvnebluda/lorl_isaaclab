@@ -3,13 +3,12 @@ from importlib.resources import files
 import numpy as np
 from gymnasium.spaces import Box
 
-from legged_obstacle_rl.tasks.sim2sim.mujoco.utils import quat_apply_inverse
-from legged_obstacle_rl.tasks.sim2sim.mujoco.velocity_env import VelocityEnv, isaac_home_jpos, mujoco_to_isaac_joints
+from legged_obstacle_rl.tasks.mujoco.velocity_env import VelocityEnv, isaac_home_jpos, mujoco_to_isaac_joints
 
 
 class Go1ArgoEnv(VelocityEnv):
     def __init__(self, **kwargs):
-        xml_file = str(files("legged_obstacle_rl").joinpath("tasks/sim2sim/mujoco/unitree_go1/scene.xml"))
+        xml_file = str(files("legged_obstacle_rl").joinpath("tasks/mujoco/unitree_go1/scene.xml"))
         super().__init__(xml_file, frame_skip=4, device="cpu", obs_size=49, **kwargs)
 
         self.z_cmd = 0.3
@@ -32,7 +31,7 @@ class Go1ArgoEnv(VelocityEnv):
             )
         ).astype(np.float32)
 
-        assert len(obs) == self.obs_size
+        assert len(obs) == self.obs_size, f"{len(obs)} does not equal to {self.obs_size}"
         return obs
 
     def print_debug(self):
@@ -57,24 +56,23 @@ class Go1ArgoHEnv(Go1ArgoEnv):
         self.obs_size = 217
         self.observation_space = Box(low=-np.inf, high=np.inf, shape=(self.obs_size,), dtype=np.float32)
 
-    def _get_obs(self):
+    def get_obs(self):
         qpos = self.data.qpos.flatten()
         qvel = self.data.qvel.flatten()
-        base_quat = qpos[3:7]
-        base_lin_vel = quat_apply_inverse(base_quat, qvel[:3])
         base_ang_vel = qvel[3:6]
 
         obs = np.concatenate(
             (
-                -qpos[7:][mujoco_to_isaac_joints] + isaac_home_jpos,
-                base_lin_vel,
+                qpos[7:][mujoco_to_isaac_joints] - isaac_home_jpos,
+                self.base_lin_vel(),
                 base_ang_vel,
                 qvel[6:][mujoco_to_isaac_joints],
                 self.projected_gravity(),
                 self.vel_cmd,
-                (self.z_cmd,),
-                np.concatenate(self.actions[-15:]),
+                [self.z_cmd],
+                np.concatenate(self.actions[-15:]),  # TODO: is the order right?
             )
         ).astype(np.float32)
 
+        assert len(obs) == self.obs_size, f"{len(obs)} does not equal to {self.obs_size}"
         return obs
