@@ -1,3 +1,4 @@
+from typing import Iterable
 import numpy as np
 
 
@@ -25,38 +26,28 @@ def quat_apply_inverse(quat: np.ndarray, vec: np.ndarray) -> np.ndarray:
     return (vec - quat[:, 0:1] * t + np.cross(xyz, t, axis=-1)).reshape(shape)
 
 
-def cor(*, target, source):
+def map_indexes(*, target: Iterable, source: Iterable) -> list:
+    """Return the indices of target names in the source list.
+
+    Args:
+        target (Iterable): Ordered list of names defining the desired output order.
+        source (Iterable): Ordered list of names to search within.
+
+    Returns:
+        list[int]: Indices into `source` such that
+            ``[source[i] for i in result] == target``.
+
+    Raises:
+        ValueError: (implicit) If a name in `target` is not found in `source`,
+            the name is silently skipped and the result will be shorter than expected.
+
+    Example:
+        >>> find_indices(target=["b", "c", "a"], source=["a", "b", "c"])
+        [1, 2, 0]
+    """
     res = []
     for name in target:
-        for i, iname in enumerate(source):
-            if iname == name:
+        for i, sname in enumerate(source):
+            if sname == name:
                 res.append(i)
     return res
-
-
-# fmt: off
-# Joint Order in MuJoCo
-mujoco_joint_names = [
-    "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint",
-    "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint",
-    "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint",
-    "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint",
-]
-# Joint Order in IsaacLab
-isaac_joint_names = [
-    "FL_hip_joint",   "FR_hip_joint",   "RL_hip_joint",   "RR_hip_joint",
-    "FL_thigh_joint", "FR_thigh_joint", "RL_thigh_joint", "RR_thigh_joint",
-    "FL_calf_joint",  "FR_calf_joint",  "RL_calf_joint",  "RR_calf_joint",
-]
-# Home joint positions in IsaacLab
-isaac_home_jpos = np.array([
-     0.1, -0.1,  0.1, -0.1, # hips
-     0.8,  0.8,  1.0,  1.0, # thighs
-    -1.5, -1.5, -1.5, -1.5, # calves
-])
-# fmt: on
-isaac_to_mujoco_joints = cor(target=mujoco_joint_names, source=isaac_joint_names)
-mujoco_to_isaac_joints = cor(target=isaac_joint_names, source=mujoco_joint_names)
-
-ZERO_ACTION = np.zeros(12, dtype=np.float32)
-GRAVITY_VEC = normalize(np.array([[0.0, 0.0, -9.81]], dtype=np.float32)).squeeze(0)
