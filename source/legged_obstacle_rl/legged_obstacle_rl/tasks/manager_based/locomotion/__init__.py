@@ -77,9 +77,9 @@ def register_rough_lh(id_postfix: str, env_cfg: str, skrl_cfg: str):
     )
 
 
-register_rough("v0", "Go1RoughLongHistoryEnvCfg_v0", "skrl_rough_ppo_cfg.yaml")
-register_rough("Play-v0", "Go1RoughLongHistoryEnvCfg_v0_PLAY", "skrl_rough_ppo_cfg.yaml")
-register_rough("Play-ICRA-v0", "Go1RoughLongHistoryEnvCfg_v0_PLAY_ICRA", "skrl_rough_ppo_cfg.yaml")
+register_rough_lh("v0", "Go1RoughLongHistoryEnvCfg_v0", "skrl_rough_ppo_cfg.yaml")
+register_rough_lh("Play-v0", "Go1RoughLongHistoryEnvCfg_v0_PLAY", "skrl_rough_ppo_cfg.yaml")
+register_rough_lh("Play-ICRA-v0", "Go1RoughLongHistoryEnvCfg_v0_PLAY_ICRA", "skrl_rough_ppo_cfg.yaml")
 
 
 ##
@@ -91,10 +91,10 @@ def register_dir(id_postfix: str, env_cfg: str, skrl_cfg: str):
     register_manager_based_env(
         id="LORL-Go1RoughDir-RL-" + id_postfix,
         env_cfg=f"{direction.__name__}.go1.rough_rl_env_cfg:" + env_cfg,
-        skrl_cfg=f"{direction.__name__}.go1.rough.agents:" + skrl_cfg,
+        skrl_cfg=f"{direction.__name__}.go1.agents:" + skrl_cfg,
     )
 
 
-register_rough("v0", "Go1RoughEnvCfg_v0", "skrl_rough_ppo_cfg.yaml")
-register_rough("Play-v0", "Go1RoughEnvCfg_v0_PLAY", "skrl_rough_ppo_cfg.yaml")
-register_rough("Play-ICRA-v0", "Go1RoughEnvCfg_v0_PLAY_ICRA", "skrl_rough_ppo_cfg.yaml")
+register_dir("v0", "Go1RoughEnvCfg_v0", "skrl_rough_ppo_cfg.yaml")
+register_dir("Play-v0", "Go1RoughEnvCfg_v0_PLAY", "skrl_rough_ppo_cfg.yaml")
+register_dir("Play-ICRA-v0", "Go1RoughEnvCfg_v0_PLAY_ICRA", "skrl_rough_ppo_cfg.yaml")
