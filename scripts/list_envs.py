@@ -16,6 +16,7 @@ with `Isaac` in their name.
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import sys
 
 from isaaclab.app import AppLauncher
 
@@ -52,7 +53,7 @@ def main():
                     index + 1,
                     task_spec.id,
                     task_spec.entry_point,
-                    task_spec.kwargs["env_cfg_entry_point"],
+                    task_spec.kwargs.get("env_cfg_entry_point", "N/A"),
                 ]
             )
             index += 1
