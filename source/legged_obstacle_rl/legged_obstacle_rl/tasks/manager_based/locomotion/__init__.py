@@ -98,3 +98,20 @@ def register_dir(id_postfix: str, env_cfg: str, skrl_cfg: str):
 register_dir("v0", "Go1RoughEnvCfg_v0", "skrl_rough_ppo_cfg.yaml")
 register_dir("Play-v0", "Go1RoughEnvCfg_v0_PLAY", "skrl_rough_ppo_cfg.yaml")
 register_dir("Play-ICRA-v0", "Go1RoughEnvCfg_v0_PLAY_ICRA", "skrl_rough_ppo_cfg.yaml")
+
+
+##
+# AlienGo velocity based rough.
+##
+
+
+def register_aliengo_rough(id_postfix: str, env_cfg: str, skrl_cfg: str):
+    register_manager_based_env(
+        id="LORL-AlienGoRough-RL-" + id_postfix,
+        env_cfg=f"{velocity.__name__}.aliengo.rough.env_cfg:" + env_cfg,
+        skrl_cfg=f"{velocity.__name__}.aliengo.rough.agents:" + skrl_cfg,
+    )
+
+
+register_aliengo_rough("v0", "AlienGoRoughEnvCfg_v0", "skrl_rough_ppo_cfg.yaml")
+register_aliengo_rough("Play-v0", "AlienGoRoughEnvCfg_v0_PLAY", "skrl_rough_ppo_cfg.yaml")
