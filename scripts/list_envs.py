@@ -16,7 +16,6 @@ with `Isaac` in their name.
 """Launch Isaac Sim Simulator first."""
 
 import argparse
-import sys
 
 from isaaclab.app import AppLauncher
 
