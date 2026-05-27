@@ -14,7 +14,7 @@ HS_OFFSET_Z = 20.0
 
 
 class Go1RoughFlatEnv(VelocityEnv):
-    def __init__(self, xml_file: str | None, **kwargs):
+    def __init__(self, xml_file: str | None = None, **kwargs):
         if xml_file is None:
             xml_file = str(files("legged_obstacle_rl").joinpath("tasks/mujoco/unitree_go1/scene.xml"))
         super().__init__(xml_file, frame_skip=4, device="cpu", obs_size=235, **kwargs)
