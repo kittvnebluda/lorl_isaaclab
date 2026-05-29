@@ -67,9 +67,9 @@ Robot receives a direction unit vector and learns to move toward it. Rewards ori
 
 | Environment ID | Description |
 |---|---|
-| `LORL-Go1Rough-MJC-v0` | Go1 rough terrain in MuJoCo |
-| `LORL-Go1Argo-MJC-v0` | Argo env in MuJoCo |
-| `LORL-Go1ArgoH-MJC-v0` | Argo env with longer history in MuJoCo |
+| `LORL-Go1Rough-MJ-v0` | Go1 rough terrain in MuJoCo |
+| `LORL-Go1Argo-MJ-v0` | Argo env in MuJoCo |
+| `LORL-Go1ArgoH-MJ-v0` | Argo env with longer history in MuJoCo |
 
 Uses a learned MLP actuator model (`ActuatorNetMLP`) trained to replicate Go1 joint dynamics. Observation space: 235-dim (joint positions, velocities, base state, projected gravity, velocity commands, height scan).
 
@@ -122,7 +122,7 @@ python scripts/skrl/play.py \
 
 ```bash
 python scripts/skrl/deploy.py \
-    --task=LORL-Go1Rough-MJC-v0 \
+    --task=LORL-Go1Rough-MJ-v0 \
     --checkpoint PATH \
     [--config path/to/agent_cfg.yaml] \
     [--teleop] \

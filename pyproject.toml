@@ -96,6 +96,16 @@ docstring-code-format = true
 
 [tool.pyright]
 
+extraPaths = [
+    "/home/litt/IsaacLab/source/isaaclab/",
+    "/home/litt/IsaacLab/source/isaaclab_tasks/",
+    "/home/litt/IsaacLab/source/isaaclab_assets/",
+    "/home/litt/IsaacLab/source/isaaclab_contrib/",
+    "/home/litt/IsaacLab/source/isaaclab_mimic/",
+    "/home/litt/IsaacLab/source/isaaclab_rl/",
+    "./source/legged_obstacle_rl/",
+    "./typings/",
+]
 include = ["source", "scripts"]
 exclude = [
     "**/__pycache__",
@@ -104,15 +114,6 @@ exclude = [
     "**/logs",
     ".git",
     ".vscode",
-]
-extraPaths = [
-    "/home/litt/IsaacLab/source/isaaclab/",
-    "/home/litt/IsaacLab/source/isaaclab_tasks/",
-    "/home/litt/IsaacLab/source/isaaclab_assets/",
-    "/home/litt/IsaacLab/source/isaaclab_contrib/",
-    "/home/litt/IsaacLab/source/isaaclab_mimic/",
-    "/home/litt/IsaacLab/source/isaaclab_rl/",
-    "./typings/",
 ]
 
 typeCheckingMode = "basic"

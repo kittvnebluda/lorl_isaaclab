@@ -5,14 +5,23 @@ version = "0.1.0"
 
 # Description
 category = "isaaclab"
-readme  = "README.md"
+readme = "README.md"
 
-title = "Extension Template"
-author = "Isaac Lab Project Developers"
-maintainer = "Isaac Lab Project Developers"
-description="Extension Template for Isaac Lab"
-repository = "https://github.com/isaac-sim/IsaacLab.git"
-keywords = ["extension", "template", "isaaclab"]
+title = "Legged Obstacle RL"
+author = "Grigorii Sizikov"
+maintainer = "Grigorii Sizikov"
+description = "Unitree Go1 rough-terrain RL (IsaacLab + skrl) with MuJoCo sim2sim and real-robot deployment."
+repository = "https://github.com/kittnablude/legged-rl-isaaclab"
+keywords = [
+    "unitree",
+    "go1",
+    "isaaclab",
+    "skrl",
+    "legged-robotics",
+    "sim2sim",
+    "mujoco",
+    "rl",
+]
 
 [dependencies]
 "isaaclab" = {}
