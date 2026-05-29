@@ -7,7 +7,7 @@ from evdev import InputDevice, categorize, ecodes, list_devices
 
 
 @dataclass
-class State:
+class _TeleopState:
     lin_x: float = 0.0
     lin_y: float = 0.0
     ang_z: float = 0.0
@@ -16,11 +16,10 @@ class State:
     lock: bool = False
 
 
-# Shared state instance
-state = State()
+state = _TeleopState()
 
 
-def teleop_backend(state_obj):
+def _teleop_backend(state_obj):
     """Background worker that listens for keyboard events."""
     devices = [InputDevice(path) for path in list_devices()]
     dev = next((d for d in devices if "keyboard" in d.name.lower()), None)
@@ -86,12 +85,14 @@ def teleop_backend(state_obj):
                 state_obj.height = np.clip(state_obj.height, 0.1, 0.5)
 
 
-def start_teleop_thread():
-    teleop_thread = threading.Thread(target=teleop_backend, args=(state,), daemon=True)
+def start():
+    """Start a thread in which keyboard is listened to and the `state` is updated"""
+    teleop_thread = threading.Thread(target=_teleop_backend, args=(state,), daemon=True)
     teleop_thread.start()
 
 
 def print_commands():
+    """Print the `state` fields with `\r`"""
     lock_indicator = " [LOCKED]" if state.lock else ""
     print(
         f"\r[COMMANDS] VX: {state.lin_x: 1.2f} | VY: {state.lin_y: 1.2f} | WZ: {state.ang_z: 1.2f} | H: {state.height: 0.2f}{lock_indicator}   ",
@@ -100,8 +101,11 @@ def print_commands():
     )
 
 
+# Usage example --------------------------------
+
+
 def main():
-    start_teleop_thread()
+    start()
     print("Teleop thread started.")
     print("  Move: I/K (Vx), J/L (Vy), U/O (Wz), Y/H (Height)")
     print("  Toggle Lock: Ctrl+L | Quit: ESC")
@@ -111,7 +115,7 @@ def main():
             print_commands()
             time.sleep(0.02)
     except KeyboardInterrupt:
-        state.stop = True
+        pass
 
     print("\nRobot control stopped.")
 

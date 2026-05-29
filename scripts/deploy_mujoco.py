@@ -63,11 +63,11 @@ elif args_cli.ml_framework.startswith("jax"):
     from skrl.utils.runner.jax import Runner
 
 import legged_obstacle_rl.tasks  # noqa: F401
-from legged_obstacle_rl.teleop import start_teleop_thread, state
+import numpy as np
+from legged_obstacle_rl import teleop
 from skrl.envs.wrappers.torch import wrap_env
 
 from isaaclab.utils.io.yaml import load_yaml
-
 
 actions_list = []
 
@@ -93,7 +93,7 @@ def main():
     # Teleoperation
     if args_cli.teleop:
         print("[INFO] Teleoperation enabled. Use WASD/QE/RF keys.")
-        start_teleop_thread()
+        teleop.start()
 
     with gym.make(args_cli.task, render_mode="human") as env:
         try:
@@ -118,7 +118,7 @@ def main():
         print("[DEBUG] Time delta:", dt)
 
         obs, _ = env.reset()
-        while not state.stop:
+        while not teleop.state.stop:
             start_time = time.time()
 
             with torch.inference_mode():
@@ -131,10 +131,10 @@ def main():
                 actions_list.append(actions)
 
             if args_cli.teleop:
-                env._unwrapped.vel_cmd[0] = state.lin_x
-                env._unwrapped.vel_cmd[1] = state.lin_y
-                env._unwrapped.vel_cmd[2] = state.ang_z
-                env._unwrapped.z_cmd = state.height
+                env._unwrapped.vel_cmd[0] = teleop.state.lin_x
+                env._unwrapped.vel_cmd[1] = teleop.state.lin_y
+                env._unwrapped.vel_cmd[2] = teleop.state.ang_z
+                env._unwrapped.z_cmd = teleop.state.height
 
             env._unwrapped.print_debug()
 

@@ -91,7 +91,7 @@ elif args_cli.ml_framework.startswith("jax"):
     from skrl.utils.runner.jax import Runner
 
 import legged_obstacle_rl.tasks  # noqa: F401
-from legged_obstacle_rl.teleop import print_commands, start_teleop_thread, state
+from legged_obstacle_rl import teleop
 
 from isaaclab.envs import (
     DirectMARLEnv,
@@ -207,18 +207,18 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
         torch.set_printoptions(threshold=float("inf"))
 
         if args_cli.teleop:
-            start_teleop_thread()
+            teleop.start()
 
         while simulation_app.is_running():
             start_time = time.time()
 
             with torch.inference_mode():
                 if args_cli.teleop:
-                    cmd = torch.tensor([state.lin_x, state.lin_y, state.ang_z], device=args_cli.device).expand(
-                        env_cfg.scene.num_envs, -1
-                    )
+                    s = teleop.state
+                    cmd = torch.tensor([s.lin_x, s.lin_y, s.ang_z], device=args_cli.device)  # pyright: ignore[reportPrivateImportUsage]
+                    cmd = cmd.expand(env_cfg.scene.num_envs, -1)
                     obs[:, 33:36] = cmd
-                    print_commands()
+                    teleop.print_commands()
 
                 outputs = runner.agent.act(obs, timestep=0, timesteps=0)
                 # - multi-agent (deterministic) actions
