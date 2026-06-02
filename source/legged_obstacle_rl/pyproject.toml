@@ -15,3 +15,8 @@ extraPaths = [
     "/home/litt/IsaacLab/source/isaaclab_rl/",
     "/home/litt/Projects/legged-rl-isaaclab/typings/",
 ]
+reportPrivateImportUsage = "none"
+reportMissingModuleSource = "none" # -> most common: prettytable in mdp managers
+reportGeneralTypeIssues = "none" # -> raises 218 errors (usage of literal MISSING in dataclasses)
+reportOptionalMemberAccess = "warning" # -> raises 8 errors
+reportPrivateUsage = "warning"

@@ -121,16 +121,13 @@ pythonVersion = "3.11"
 pythonPlatform = "Linux"
 enableTypeIgnoreComments = true
 
-# This is required as the CI pre-commit does not download the module (i.e. numpy, torch, prettytable)
-# Therefore, we have to ignore missing imports
-reportMissingImports = "none"
 # This is required to ignore for type checks of modules with stubs missing.
 reportMissingModuleSource = "none" # -> most common: prettytable in mdp managers
 
 reportGeneralTypeIssues = "none"       # -> raises 218 errors (usage of literal MISSING in dataclasses)
 reportOptionalMemberAccess = "warning" # -> raises 8 errors
 reportPrivateUsage = "warning"
-
+reportPrivateImportUsage = "none"
 
 [tool.codespell]
 skip = '*.usd,*.usda,*.usdz,*.svg,*.png,_isaac_sim*,*.bib,*.css,*/_build'
@@ -140,5 +137,4 @@ ignore-words-list = "haa,slq,collapsable,buss,reacher,thirdparty"
 
 
 [tool.pytest.ini_options]
-
 markers = ["isaacsim_ci: mark test to run in isaacsim ci"]
