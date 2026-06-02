@@ -18,12 +18,7 @@ parser.add_argument(
         "--algorithm is used to determine the default agent configuration entry point."
     ),
 )
-parser.add_argument(
-    "--checkpoint",
-    type=str,
-    default=None,
-    help="Path to model checkpoint.",
-)
+parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint.")
 parser.add_argument(
     "--ml_framework",
     type=str,
