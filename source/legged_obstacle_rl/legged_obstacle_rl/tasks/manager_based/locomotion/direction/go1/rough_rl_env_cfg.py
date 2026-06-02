@@ -1,7 +1,7 @@
 import isaaclab.sim as sim_utils
 from isaaclab.assets import AssetBaseCfg
 from isaaclab.utils import configclass
-from isaaclab_assets.robots.unitree import UNITREE_GO1_CFG
+from legged_obstacle_rl.robots.unitree import GO1_CFG as UNITREE_GO1_CFG
 
 from legged_obstacle_rl.tasks.manager_based.locomotion.direction.direction_env_cfg import DirectionRLEnvCfg
 

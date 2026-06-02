@@ -14,9 +14,7 @@ def import_packages(package_name: str, blacklist_pkgs: list[str] | None = None):
     if blacklist_pkgs is None:
         blacklist_pkgs = []
     package = importlib.import_module(package_name)
-    for _ in _walk_packages(
-        package.__path__, package.__name__ + ".", blacklist_pkgs=blacklist_pkgs
-    ):
+    for _ in _walk_packages(package.__path__, package.__name__ + ".", blacklist_pkgs=blacklist_pkgs):
         pass
 
 

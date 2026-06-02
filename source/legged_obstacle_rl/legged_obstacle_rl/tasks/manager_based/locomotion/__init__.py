@@ -1,8 +1,3 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
-
 import gymnasium as gym
 
 from . import direction, velocity
@@ -115,3 +110,29 @@ def register_aliengo_rough(id_postfix: str, env_cfg: str, skrl_cfg: str):
 
 register_aliengo_rough("v0", "AlienGoRoughEnvCfg_v0", "skrl_rough_ppo_cfg.yaml")
 register_aliengo_rough("Play-v0", "AlienGoRoughEnvCfg_v0_PLAY", "skrl_rough_ppo_cfg.yaml")
+
+
+##
+# AlienGo direction based rough.
+##
+
+
+def register_aliengo_direction(id_postfix: str, env_cfg: str):
+    base = f"{direction.__name__}.aliengo"
+    gym.register(
+        id="LORL-AlienGoDirection-RL-" + id_postfix,
+        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        disable_env_checker=True,
+        kwargs={
+            "env_cfg_entry_point": f"{base}.rough_rl_env_cfg:{env_cfg}",
+            "rsl_rl_cfg_entry_point": f"{base}.agents.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_distillation_cfg_entry_point": (
+                f"{base}.agents.rsl_rl_distillation_cfg:AlienGoDirectionDistillationRunnerCfg"
+            ),
+        },
+    )
+
+
+register_aliengo_direction("v0", "AlienGoRoughEnvCfg_v0")
+register_aliengo_direction("Play-v0", "AlienGoRoughEnvCfg_v0_PLAY")
+register_aliengo_direction("Distill-v0", "AlienGoRoughEnvCfg_v0_DISTILL")

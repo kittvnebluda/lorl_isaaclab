@@ -22,6 +22,11 @@ class UniformDirectionCommandCfg(CommandTermCfg):
     rel_standing_envs: float = 0.0
     """The sampled probability of environments that should be standing still. Defaults to 0.0."""
 
+    turn_prob: float = 0.3
+    """Probability of sampling a non-zero turn command. With probability ``turn_prob`` the turn
+    direction is +/-1 (each with equal chance); otherwise it is 0 (no rotation). Lower values yield
+    fewer rotation commands. ``turn_prob=2/3`` reproduces the old uniform {-1, 0, 1} sampling."""
+
     @configclass
     class Ranges:
         """Uniform distribution ranges for the direction commands."""

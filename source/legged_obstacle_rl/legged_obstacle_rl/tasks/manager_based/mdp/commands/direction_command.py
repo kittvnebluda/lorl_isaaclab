@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -12,8 +11,6 @@ from isaaclab.utils.math import quat_from_euler_xyz, quat_mul
 
 if TYPE_CHECKING:
     from .commands_cfg import UniformDirectionCommandCfg
-
-logger = logging.getLogger(__name__)
 
 
 class UniformDirectionCommand(CommandTerm):
@@ -45,9 +42,12 @@ class UniformDirectionCommand(CommandTerm):
         self.is_standing_env = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
 
         # metrics
-        self.metrics["error_dir"] = torch.zeros(self.num_envs, device=self.device)
-        self.metrics["error_turn"] = torch.zeros(self.num_envs, device=self.device)
+        self.metrics["cmd_angle_error"] = torch.zeros(self.num_envs, device=self.device)
+        self.metrics["turn_sign_error"] = torch.zeros(self.num_envs, device=self.device)
         self.metrics["v_pr"] = torch.zeros(self.num_envs, device=self.device)  # velocity projection metric from paper
+
+        # command-aligned progress integrated per step against the command active that step.
+        self.command_progress = torch.zeros(self.num_envs, device=self.device)
 
     def __str__(self) -> str:
         """Return a string representation of the command generator."""
@@ -62,6 +62,19 @@ class UniformDirectionCommand(CommandTerm):
     def command(self) -> torch.Tensor:
         """The desired direction command in the base frame. Shape is (num_envs, 3)."""
         return self.dir_command_b
+
+    def reset(self, env_ids=None):
+        """Reset per-episode accumulators, then defer to the base resample/metric logic.
+
+        Called at episode boundaries. The terrain curriculum reads ``command_progress`` earlier
+        in the same reset cycle (curriculum_manager.compute runs before command_manager.reset),
+        so zeroing it here clears it for the next episode without losing the value.
+        """
+        if env_ids is None:
+            self.command_progress[:] = 0.0
+        else:
+            self.command_progress[env_ids] = 0.0
+        return super().reset(env_ids)
 
     def _update_metrics(self):
         """Log tracking metrics and the velocity projection (v_pr) used in the paper's reward."""
@@ -79,17 +92,22 @@ class UniformDirectionCommand(CommandTerm):
         # 1. Direction alignment error (angle between commanded and actual direction)
         dot_prod = torch.sum(cmd_dir * vel_dir_b, dim=-1).clamp(-1.0, 1.0)
         dir_error = torch.acos(dot_prod)
-        self.metrics["error_dir"] += dir_error / max_command_step
+        self.metrics["cmd_angle_error"] += dir_error / max_command_step
 
         # 2. Turning alignment error
         # We compare commanded turn dir with sign of actual angular velocity
         actual_turn_dir = torch.sign(self.robot.data.root_ang_vel_b[:, 2])
         turn_error = torch.abs(self.dir_command_b[:, 2] - actual_turn_dir)
-        self.metrics["error_turn"] += turn_error / max_command_step
+        self.metrics["turn_sign_error"] += turn_error / max_command_step
 
-        # 3. Velocity projection (v_pr) - core metric from the paper's reward function
-        # v_pr = (base_velocity) · (commanded_direction)
-        self.metrics["v_pr"] += torch.sum(self.robot.data.root_lin_vel_b[:, :2] * cmd_dir, dim=-1) / max_command_step
+        # 3. Velocity projection (v_pr)
+        v_pr = torch.sum(self.robot.data.root_lin_vel_b[:, :2] * cmd_dir, dim=-1)
+        self.metrics["v_pr"] += v_pr / max_command_step
+
+        # integrate command-aligned distance (v_pr * dt) against the command active this step.
+        # frame-consistent (both velocity and command are base-frame), so it measures how far the
+        # robot advanced along whatever it was told, summed over all commands in the episode.
+        self.command_progress += v_pr * self._env.step_dt
 
     def _resample_command(self, env_ids: Sequence[int]):
         """Resample direction commands for the specified environments."""
@@ -100,9 +118,11 @@ class UniformDirectionCommand(CommandTerm):
         self.dir_command_b[env_ids, 0] = torch.cos(yaw)
         self.dir_command_b[env_ids, 1] = torch.sin(yaw)
 
-        # Sample discrete turning direction: {-1, 0, 1}
-        # torch.randint(low, high) is exclusive on high, so -1 to 2 gives -1, 0, 1
-        self.dir_command_b[env_ids, 2] = torch.randint(-1, 2, (len(env_ids),), device=self.device).float()
+        # Sample discrete turning direction: {-1, 0, 1}.
+        # With probability turn_prob issue a turn (+/-1, equal chance); otherwise 0 (no rotation).
+        do_turn = r.uniform_(0.0, 1.0) <= self.cfg.turn_prob
+        sign = torch.where(torch.rand(len(env_ids), device=self.device) < 0.5, -1.0, 1.0)
+        self.dir_command_b[env_ids, 2] = torch.where(do_turn, sign, torch.zeros_like(sign))
 
         # Update standing environments
         self.is_standing_env[env_ids] = r.uniform_(0.0, 1.0) <= self.cfg.rel_standing_envs
