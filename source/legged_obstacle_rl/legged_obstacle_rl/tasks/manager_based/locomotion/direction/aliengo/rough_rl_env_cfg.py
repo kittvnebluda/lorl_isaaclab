@@ -100,14 +100,21 @@ class ObservationsCfg:
 
 @configclass
 class RewardsCfg:
-    track_lin_vel_xy_exp = RewTerm(func=mdp.track_linear_velocity, weight=0.8)
-    track_ang_vel_z_exp = RewTerm(func=mdp.track_angular_velocity, weight=0.5)
+    alive = RewTerm(func=mdp.is_alive, weight=0.25)
+    track_lin_vel_xy_exp = RewTerm(func=mdp.track_linear_velocity_ramp, weight=0.8)
+    track_ang_vel_z_exp = RewTerm(func=mdp.track_angular_velocity_still, weight=0.5)
 
     base_motion_exp = RewTerm(func=mdp.base_motion_reward, weight=0.06)
+    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
+    flight_phase = RewTerm(
+        func=mdp.flight_phase,
+        weight=-0.5,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_calf"), "threshold": 1.0},
+    )
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-2.0e-6)
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.0e-8)
     feet_air_time = RewTerm(
-        func=mdp.feet_air_time,
+        func=mdp.feet_air_time_progress,
         weight=0.01,
         params={
             "command_name": "base_direction",

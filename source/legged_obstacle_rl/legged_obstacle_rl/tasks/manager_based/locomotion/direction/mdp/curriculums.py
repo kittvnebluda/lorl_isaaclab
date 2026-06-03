@@ -33,7 +33,7 @@ def terrain_levels_dir(
 
     progress = command_term.command_progress[env_ids]
     distance = torch.norm(asset.data.root_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2], dim=1)
-    v_pr: torch.Tensor = command_term.metrics["v_pr"]
+    v_pr: torch.Tensor = command_term.metrics["v_pr"][env_ids]
 
     is_turning = torch.abs(command[:, 2]) >= 0.1
     is_standing = command_term.is_standing_env[env_ids]
