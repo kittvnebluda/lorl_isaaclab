@@ -78,6 +78,9 @@ class Go1RoughEnvCfg_v0_PLAY_ICRA(Go1RoughEnvCfg_v0):
         # turn off curriculum
         self.curriculum.terrain_levels = None
         self.rewards.terrain_levels_mean = None
+        # disable terminations so the robot is never reset (avoids mesh tunneling on reset)
+        self.terminations.time_out = None
+        self.terminations.base_contact = None
         # change map
         self.scene.terrain = AssetBaseCfg(
             prim_path="/World/ground",

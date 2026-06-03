@@ -11,6 +11,8 @@ from isaaclab.markers import VisualizationMarkers
 from isaaclab.utils.math import quat_from_euler_xyz, quat_mul
 
 if TYPE_CHECKING:
+    from legged_obstacle_rl.teleop import TeleopState
+
     from .commands_cfg import UniformDirectionCommandCfg
 
 
@@ -132,6 +134,32 @@ class UniformDirectionCommand(CommandTerm):
         """Post-processes the command. Enforces zero command for standing environments."""
         standing_env_ids = self.is_standing_env.nonzero(as_tuple=False).flatten()
         self.dir_command_b[standing_env_ids, :] = 0.0
+
+    def inject_teleop(self, state: TeleopState) -> None:
+        """Override the command from a keyboard teleop state (see ``legged_obstacle_rl.teleop``).
+
+        Maps the (lin_x, lin_y) keys to a base-frame heading and the ang_z key to a discrete
+        turn direction: command = <cos psi, sin psi, sign(ang_z)>. A near-zero heading vector
+        yields a stand (and optional turn-in-place) command. Freezes periodic resampling on the
+        first call and clears standing flags so the teleop command holds across steps.
+        """
+        # freeze auto-resampling so the teleop command persists (idempotent)
+        self.cfg.resampling_time_range = (1.0e9, 1.0e9)
+
+        heading = torch.tensor([state.lin_x, state.lin_y], device=self.device)
+        norm = torch.linalg.norm(heading)
+        if state.ang_z == 0.0:
+            turn = 0
+        else:
+            turn = float(torch.sign(torch.tensor(state.ang_z)))
+        if norm < 1e-3:
+            self.dir_command_b[:, 0] = 0.0
+            self.dir_command_b[:, 1] = 0.0
+        else:
+            self.dir_command_b[:, 0] = heading[0] / norm
+            self.dir_command_b[:, 1] = heading[1] / norm
+        self.dir_command_b[:, 2] = turn
+        self.is_standing_env[:] = False
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         """Set visibility of debug visualization markers."""

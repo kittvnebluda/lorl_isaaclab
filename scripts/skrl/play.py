@@ -212,14 +212,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
         while simulation_app.is_running():
             start_time = time.time()
 
-            with torch.inference_mode():
-                if args_cli.teleop:
-                    s = teleop.state
-                    cmd = torch.tensor([s.lin_x, s.lin_y, s.ang_z], device=args_cli.device)  # pyright: ignore[reportPrivateImportUsage]
-                    cmd = cmd.expand(env_cfg.scene.num_envs, -1)
-                    obs[:, 33:36] = cmd
-                    teleop.print_commands()
+            if args_cli.teleop:
+                teleop.apply(env)
+                teleop.print_commands()
 
+            with torch.inference_mode():
                 outputs = runner.agent.act(obs, timestep=0, timesteps=0)
                 # - multi-agent (deterministic) actions
                 if hasattr(env, "possible_agents"):

@@ -2,6 +2,7 @@ from dataclasses import MISSING
 from math import pi
 
 import isaaclab.sim as sim_utils
+from isaaclab.envs.mdp import UniformVelocityCommandCfg as _UniformVelocityCommandCfg
 from isaaclab.managers import CommandTermCfg
 from isaaclab.markers import VisualizationMarkersCfg
 from isaaclab.markers.config import BLUE_ARROW_X_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG, SPHERE_MARKER_CFG
@@ -9,6 +10,14 @@ from isaaclab.utils import configclass
 
 from .direction_command import UniformDirectionCommand
 from .height_command import UniformBodyHeightCommand
+from .velocity_command import UniformVelocityCommand
+
+
+@configclass
+class UniformVelocityCommandCfg(_UniformVelocityCommandCfg):
+    """``UniformVelocityCommandCfg`` whose term supports keyboard teleop injection."""
+
+    class_type: type = UniformVelocityCommand
 
 
 @configclass

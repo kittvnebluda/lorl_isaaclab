@@ -1,3 +1,4 @@
-from .commands_cfg import UniformBodyHeightCommandCfg, UniformDirectionCommandCfg
+from .commands_cfg import UniformBodyHeightCommandCfg, UniformDirectionCommandCfg, UniformVelocityCommandCfg
 from .direction_command import UniformDirectionCommand
 from .height_command import UniformBodyHeightCommand
+from .velocity_command import UniformVelocityCommand

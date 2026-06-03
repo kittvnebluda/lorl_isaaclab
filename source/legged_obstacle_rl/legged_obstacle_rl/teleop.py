@@ -4,10 +4,12 @@ from dataclasses import dataclass
 
 import numpy as np
 from evdev import InputDevice, categorize, ecodes, list_devices
+from isaaclab.envs import ManagerBasedRLEnv
+from legged_obstacle_rl.tasks.manager_based.mdp.commands.protocols import TeleopCommand
 
 
 @dataclass
-class _TeleopState:
+class TeleopState:
     lin_x: float = 0.0
     lin_y: float = 0.0
     ang_z: float = 0.0
@@ -16,7 +18,7 @@ class _TeleopState:
     lock: bool = False
 
 
-state = _TeleopState()
+state = TeleopState()
 
 
 def _teleop_backend(state_obj):
@@ -89,6 +91,24 @@ def start():
     """Start a thread in which keyboard is listened to and the `state` is updated"""
     teleop_thread = threading.Thread(target=_teleop_backend, args=(state,), daemon=True)
     teleop_thread.start()
+
+
+def apply(env: ManagerBasedRLEnv):
+    """Push the current teleop `state` into every command term that supports it.
+
+    Loops the env's active command terms and calls ``inject_teleop(state)`` on any term that
+    implements it (velocity / direction / height). Layout-agnostic — works regardless of obs
+    history stacking. Call once per step before ``env.step``.
+    """
+    env = getattr(env, "unwrapped", env)
+    command_manager = env.command_manager
+    for name in command_manager.active_terms:
+        term = command_manager.get_term(name)
+        if isinstance(term, TeleopCommand):
+            term.inject_teleop(state)
+
+        else:
+            print(f"Term {term.__name__} does not implements teleop protocol, cannot inject commands")
 
 
 def print_commands():

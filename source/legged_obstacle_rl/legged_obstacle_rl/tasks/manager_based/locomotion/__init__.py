@@ -78,21 +78,30 @@ register_rough_lh("Play-ICRA-v0", "Go1RoughLongHistoryEnvCfg_v0_PLAY_ICRA", "skr
 
 
 ##
-# Direction based rough.
+# Go1 direction based rough.
 ##
 
 
-def register_dir(id_postfix: str, env_cfg: str, skrl_cfg: str):
-    register_manager_based_env(
-        id="LORL-Go1RoughDir-RL-" + id_postfix,
-        env_cfg=f"{direction.__name__}.go1.rough_rl_env_cfg:" + env_cfg,
-        skrl_cfg=f"{direction.__name__}.go1.agents:" + skrl_cfg,
+def register_go1_direction(id_postfix: str, env_cfg: str):
+    base = f"{direction.__name__}.go1"
+    gym.register(
+        id="LORL-Go1Direction-RL-" + id_postfix,
+        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        disable_env_checker=True,
+        kwargs={
+            "env_cfg_entry_point": f"{base}.rough_rl_env_cfg:{env_cfg}",
+            "rsl_rl_cfg_entry_point": f"{base}.agents.rsl_rl_ppo_cfg:PPORunnerCfg",
+            "rsl_rl_distillation_cfg_entry_point": (
+                f"{base}.agents.rsl_rl_distillation_cfg:Go1DirectionDistillationRunnerCfg"
+            ),
+        },
     )
 
 
-register_dir("v0", "Go1RoughEnvCfg_v0", "skrl_rough_ppo_cfg.yaml")
-register_dir("Play-v0", "Go1RoughEnvCfg_v0_PLAY", "skrl_rough_ppo_cfg.yaml")
-register_dir("Play-ICRA-v0", "Go1RoughEnvCfg_v0_PLAY_ICRA", "skrl_rough_ppo_cfg.yaml")
+register_go1_direction("v0", "Go1RoughEnvCfg_v0")
+register_go1_direction("Play-v0", "Go1RoughEnvCfg_v0_PLAY")
+register_go1_direction("Distill-v0", "Go1RoughEnvCfg_v0_DISTILL")
+register_go1_direction("Play-ICRA-v0", "Go1RoughEnvCfg_v0_PLAY_ICRA")
 
 
 ##
@@ -135,4 +144,5 @@ def register_aliengo_direction(id_postfix: str, env_cfg: str):
 
 register_aliengo_direction("v0", "AlienGoRoughEnvCfg_v0")
 register_aliengo_direction("Play-v0", "AlienGoRoughEnvCfg_v0_PLAY")
+register_aliengo_direction("Play-ICRA-v0", "AlienGoRoughEnvCfg_v0_PLAY_ICRA")
 register_aliengo_direction("Distill-v0", "AlienGoRoughEnvCfg_v0_DISTILL")

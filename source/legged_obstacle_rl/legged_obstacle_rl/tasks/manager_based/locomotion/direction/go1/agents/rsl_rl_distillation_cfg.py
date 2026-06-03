@@ -8,11 +8,13 @@ from isaaclab_rl.rsl_rl import (
 
 
 @configclass
-class AlienGoDirectionDistillationRunnerCfg(RslRlDistillationRunnerCfg):
+class Go1DirectionDistillationRunnerCfg(RslRlDistillationRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 1000
     save_interval = 50
-    experiment_name = "aliengo_direction"
+    # same log root as the teacher so get_checkpoint_path() can resolve the teacher run
+    # (pass --load_run <teacher_dir> --checkpoint model_*.pt); distinguish via --run_name.
+    experiment_name = "go1_direction"
     obs_groups = {"student": ["policy"], "teacher": ["policy", "privilliged"]}
     student = RslRlRNNModelCfg(
         hidden_dims=[512, 256, 128],

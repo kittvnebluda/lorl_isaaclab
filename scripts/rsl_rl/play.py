@@ -32,6 +32,7 @@ parser.add_argument(
     help="Use the pre-trained checkpoint from Nucleus.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+parser.add_argument("--teleop", action="store_true", default=False, help="Enable teleoperation")
 
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
@@ -64,6 +65,7 @@ import time
 import gymnasium as gym
 import legged_obstacle_rl.tasks  # noqa: F401
 import torch
+from legged_obstacle_rl import teleop
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
 
 from isaaclab.envs import (
@@ -153,8 +155,16 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     obs = env.get_observations()
     timestep = 0
+
+    if args_cli.teleop:
+        teleop.start()
+
     while simulation_app.is_running():
         start_time = time.time()
+
+        if args_cli.teleop:
+            teleop.apply(env)
+            teleop.print_commands()
 
         with torch.inference_mode():
             actions = policy(obs)

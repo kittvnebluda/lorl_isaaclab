@@ -1,3 +1,5 @@
+import isaaclab.sim as sim_utils
+from isaaclab.assets import AssetBaseCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -202,6 +204,40 @@ class AlienGoRoughEnvCfg_v0_PLAY(AlienGoRoughEnvCfg_v0):
         self.events.base_external_force_torque = None
         self.events.physics_material.params["static_friction_range"] = (0.8, 0.8)
         self.events.physics_material.params["dynamic_friction_range"] = (0.6, 0.6)
+
+
+@configclass
+class AlienGoRoughEnvCfg_v0_PLAY_ICRA(AlienGoRoughEnvCfg_v0):
+    def __post_init__(self):
+        super().__post_init__()
+        # single env for evaluation on the ICRA map
+        self.scene.num_envs = 1
+        # disable randomization for play
+        self.observations.policy.enable_corruption = False
+        # disable reset, pushes and external force/torque
+        self.events.reset_base = None
+        self.events.push_robot = None
+        self.events.base_external_force_torque = None
+        # set good frictions
+        self.events.physics_material.params["static_friction_range"] = (0.8, 0.8)
+        self.events.physics_material.params["dynamic_friction_range"] = (0.6, 0.6)
+        # turn off curriculum
+        self.curriculum.terrain_levels = None
+        # disable terminations so the robot is never reset (avoids mesh tunneling on reset)
+        self.terminations.time_out = None
+        self.terminations.base_contact = None
+        # swap to the ICRA evaluation map
+        self.scene.terrain = AssetBaseCfg(
+            prim_path="/World/ground",
+            spawn=sim_utils.UsdFileCfg(
+                usd_path="/home/litt/Projects/legged-rl-isaaclab/source/legged_obstacle_rl/legged_obstacle_rl/assets/icra_map_flat.usd",
+                collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.1),
+            ),
+        )
+        self.scene.robot.init_state.pos = (6.0, -4.3, 0.4)
+        self.sim.physx.enable_ccd = True
+        # visuals
+        self.commands.base_direction.debug_vis = False
 
 
 @configclass

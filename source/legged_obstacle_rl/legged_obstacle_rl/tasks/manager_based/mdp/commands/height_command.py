@@ -11,6 +11,8 @@ from isaaclab.markers import VisualizationMarkers
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
+    from legged_obstacle_rl.teleop import TeleopState
+
     from .commands_cfg import UniformBodyHeightCommandCfg
 
 
@@ -47,6 +49,11 @@ class UniformBodyHeightCommand(CommandTerm):
 
     def _update_command(self):
         pass
+
+    def inject_teleop(self, state: TeleopState) -> None:
+        """Override the height command from a teleop state. Freezes periodic resampling."""
+        self.cfg.resampling_time_range = (1.0e9, 1.0e9)
+        self.height_command[:, 0] = state.height
 
     def _set_debug_vis_impl(self, debug_vis: bool) -> None:
         """Set visibility of markers"""
