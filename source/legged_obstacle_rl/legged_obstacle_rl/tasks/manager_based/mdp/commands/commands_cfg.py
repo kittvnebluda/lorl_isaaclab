@@ -1,6 +1,7 @@
 from dataclasses import MISSING
 from math import pi
 
+import isaaclab.sim as sim_utils
 from isaaclab.managers import CommandTermCfg
 from isaaclab.markers import VisualizationMarkersCfg
 from isaaclab.markers.config import BLUE_ARROW_X_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG, SPHERE_MARKER_CFG
@@ -49,6 +50,16 @@ class UniformDirectionCommandCfg(CommandTermCfg):
 
     goal_vel_visualizer_cfg.markers["arrow"].scale = (0.5, 0.5, 0.5)
     current_vel_visualizer_cfg.markers["arrow"].scale = (0.5, 0.5, 0.5)
+
+    turn_visualizer_cfg: VisualizationMarkersCfg = VisualizationMarkersCfg(
+        prim_path="/Visuals/Command/direction_turn",
+        markers={"arrow": GREEN_ARROW_X_MARKER_CFG.markers["arrow"], "sphere": SPHERE_MARKER_CFG.markers["sphere"]},
+    )
+    """Turn-command marker: up arrow = counter-clockwise, down arrow = clockwise, sphere = no turn."""
+
+    turn_visualizer_cfg.markers["arrow"].scale = (0.3, 0.3, 0.3)
+    turn_visualizer_cfg.markers["arrow"].visual_material = sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 1.0))
+    turn_visualizer_cfg.markers["sphere"].scale = (0.15, 0.15, 0.15)
 
 
 @configclass

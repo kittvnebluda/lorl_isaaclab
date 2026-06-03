@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -138,12 +139,15 @@ class UniformDirectionCommand(CommandTerm):
             if not hasattr(self, "goal_vel_visualizer"):
                 self.goal_vel_visualizer = VisualizationMarkers(self.cfg.goal_vel_visualizer_cfg)
                 self.current_vel_visualizer = VisualizationMarkers(self.cfg.current_vel_visualizer_cfg)
+                self.turn_visualizer = VisualizationMarkers(self.cfg.turn_visualizer_cfg)
             self.goal_vel_visualizer.set_visibility(True)
             self.current_vel_visualizer.set_visibility(True)
+            self.turn_visualizer.set_visibility(True)
         else:
             if hasattr(self, "goal_vel_visualizer"):
                 self.goal_vel_visualizer.set_visibility(False)
                 self.current_vel_visualizer.set_visibility(False)
+                self.turn_visualizer.set_visibility(False)
 
     def _debug_vis_callback(self, event):
         """Callback to update debug visualization markers."""
@@ -163,6 +167,25 @@ class UniformDirectionCommand(CommandTerm):
 
         self.goal_vel_visualizer.visualize(base_pos_w, goal_quat, goal_scale)
         self.current_vel_visualizer.visualize(base_pos_w, curr_quat, curr_scale)
+
+        # Turn-command marker, placed higher than the direction arrows: up arrow = CCW (turn=+1),
+        # down arrow = CW (turn=-1), sphere = no turn (turn=0).
+        turn = self.command[:, 2]
+        turn_pos_w = self.robot.data.root_pos_w.clone()
+        turn_pos_w[:, 2] += 0.9
+
+        # prototype index: 0 = arrow (turning), 1 = sphere (no turn)
+        marker_indices = torch.ones(self.num_envs, dtype=torch.long, device=self.device)
+        marker_indices[turn.abs() > 0.5] = 0
+
+        # rotate the +X arrow about Y: -pi/2 -> world +Z (up, CCW), +pi/2 -> world -Z (down, CW)
+        zeros = torch.zeros(self.num_envs, device=self.device)
+        pitch = torch.zeros_like(zeros)
+        pitch[turn > 0.5] = -math.pi / 2
+        pitch[turn < -0.5] = math.pi / 2
+        turn_quat = quat_from_euler_xyz(zeros, pitch, zeros)
+
+        self.turn_visualizer.visualize(turn_pos_w, turn_quat, marker_indices=marker_indices)
 
     def _resolve_xy_direction_to_arrow(self, xy_vec: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Converts an XY direction vector to arrow scale and orientation in world frame."""
