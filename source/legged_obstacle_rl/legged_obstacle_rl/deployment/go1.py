@@ -7,6 +7,8 @@ has the ``DT_NEEDED`` link), so no preload is needed here.
 
 from __future__ import annotations
 
+import numpy as np
+
 from . import _common
 from ._common import stop
 
@@ -24,6 +26,15 @@ LOW_ROBOT_PORT = 8007
 
 LEGGED_TYPE = sdk.LeggedType.Go1
 
+Q_LO_ISAAC = np.array(
+    [-0.863, -0.863, -0.863, -0.863, -0.686, -0.686, -0.686, -0.686, -2.818, -2.818, -2.818, -2.818],
+    dtype=np.float32,
+)
+Q_HI_ISAAC = np.array(
+    [0.863, 0.863, 0.863, 0.863, 4.501, 4.501, 4.501, 4.501, -0.888, -0.888, -0.888, -0.888],
+    dtype=np.float32,
+)
+
 GO1_SPEC = _common.RobotSpec(
     sdk=sdk,
     legged_type=LEGGED_TYPE,
@@ -32,6 +43,8 @@ GO1_SPEC = _common.RobotSpec(
     low_ip=LOW_IP,
     kp=KP,
     kd=KD,
+    q_lo=Q_LO_ISAAC,
+    q_hi=Q_HI_ISAAC,
 )
 
 

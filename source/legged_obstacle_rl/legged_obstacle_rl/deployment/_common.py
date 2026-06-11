@@ -17,6 +17,7 @@ else here is shared.
 
 from __future__ import annotations
 
+import atexit
 import os
 import sys
 import threading
@@ -32,7 +33,7 @@ from legged_obstacle_rl.tasks.mujoco.utils import map_indexes, normalize, quat_a
 
 # fmt: off
 # Joint Order in MuJoCo
-mujoco_joint_names = [
+sdk_joint_names = [
     "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint",
     "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint",
     "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint",
@@ -51,8 +52,8 @@ isaac_home_jpos = np.array([
     -1.5, -1.5, -1.5, -1.5, # calves
 ])
 # fmt: on
-isaac_to_mujoco_joints = map_indexes(target=mujoco_joint_names, source=isaac_joint_names)
-mujoco_to_isaac_joints = map_indexes(target=isaac_joint_names, source=mujoco_joint_names)
+isaac_to_sdk_joints = map_indexes(target=sdk_joint_names, source=isaac_joint_names)
+sdk_to_isaac_joints = map_indexes(target=isaac_joint_names, source=sdk_joint_names)
 
 ZERO_ACTION = np.zeros(12, dtype=np.float32)
 GRAVITY_VEC = normalize(np.array([[0.0, 0.0, -9.81]], dtype=np.float32)).squeeze(0)
@@ -87,17 +88,6 @@ _CONTACT_TAU_THRESH = 3.0  # Nm; |tauEst| below this -> swing leg
 
 ACTION_SCALE = 0.25
 DEFAULT_BASE_HEIGHT = 0.28
-
-# Joint limits in IsaacLab order: [hip x4, thigh x4, calf x4]
-# Source: unitree_go1/go1.xml and go1.urdf
-_Q_LO_ISAAC = np.array(
-    [-0.863, -0.863, -0.863, -0.863, -0.686, -0.686, -0.686, -0.686, -2.818, -2.818, -2.818, -2.818],
-    dtype=np.float32,
-)
-_Q_HI_ISAAC = np.array(
-    [0.863, 0.863, 0.863, 0.863, 4.501, 4.501, 4.501, 4.501, -0.888, -0.888, -0.888, -0.888],
-    dtype=np.float32,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +127,8 @@ class RobotSpec:
     low_ip: str
     kp: float
     kd: float
+    q_lo: np.ndarray  # (12,) joint lower limits, IsaacLab order [hip x4, thigh x4, calf x4]
+    q_hi: np.ndarray  # (12,) joint upper limits, IsaacLab order
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +213,7 @@ def build_obs(
     return obs
 
 
-def build_obs_proprio(
+def build_obs_proprio_dir(
     s: SensorSnapshot,
     est: EstimatorState,
     vel_cmd: np.ndarray,
@@ -229,14 +221,21 @@ def build_obs_proprio(
 ) -> np.ndarray:
     """Construct 45-dim proprio-only obs for direction-task distilled student (no height scan).
 
-    vel_cmd is [lin_x, lin_y, ang_z] from teleop; converted to [cos θ, sin θ, ω].
+    vel_cmd is [lin_x, lin_y, ang_z] from teleop; converted to the direction
+    command <cos ψ, sin ψ, turn>. Must match UniformDirectionCommand.inject_teleop:
+      - idle heading (|xy| < 1e-3) -> [0, 0, ...]   (standing = <0,0,0>, NOT [1,0,0])
+      - turn is DISCRETE sign(ang_z) in {-1, 0, 1}, never the raw continuous value.
     Obs order matches IsaacLab direction-task policy group:
     joint_pos → base_ang_vel → joint_vel → projected_gravity → direction_commands → last_action
     """
     lin_x, lin_y, ang_z = vel_cmd
     mag = np.hypot(lin_x, lin_y)
-    yaw = np.arctan2(lin_y, lin_x) if mag > 1e-3 else 0.0
-    dir_cmd = np.array([np.cos(yaw), np.sin(yaw), ang_z], dtype=np.float32)
+    if mag < 1e-3:
+        cos_psi, sin_psi = 0.0, 0.0
+    else:
+        cos_psi, sin_psi = lin_x / mag, lin_y / mag
+    turn = float(np.sign(ang_z))
+    dir_cmd = np.array([cos_psi, sin_psi, turn], dtype=np.float32)
     gravity = quat_apply_inverse(s.quat, GRAVITY_VEC)
     obs = np.concatenate(
         [
@@ -261,6 +260,8 @@ def pace_loop(dt: float, stop: threading.Event) -> Iterator[float]:
         rem = next_t - time.perf_counter()
         if rem > 0:
             stop.wait(rem)
+        else:
+            next_t = time.perf_counter()
 
 
 # ---------------------------------------------------------------------------
@@ -333,8 +334,8 @@ class Hardware:
         tau_sdk = np.array([s.motorState[i].tauEst for i in range(12)], dtype=np.float32)
         return SensorSnapshot(
             t=time.perf_counter(),
-            q_isaac=q_sdk[mujoco_to_isaac_joints],
-            dq_isaac=dq_sdk[mujoco_to_isaac_joints],
+            q_isaac=q_sdk[sdk_to_isaac_joints],
+            dq_isaac=dq_sdk[sdk_to_isaac_joints],
             tau_est_sdk=tau_sdk,
             quat=np.array(s.imu.quaternion, dtype=np.float32),
             accel_body=np.array(s.imu.accelerometer, dtype=np.float32),
@@ -342,7 +343,12 @@ class Hardware:
         )
 
     def _send(self):
-        self._safe.PowerProtect(self._cmd, self._low_state, 3)
+        # PowerProtect only soft-clamps torque and prints "Error: Power Protection."
+        # — the binding is `void` (returns None), so a trip gives no programmatic
+        # signal and the loop keeps running (robot holds/fights, never dumps).
+        # TODO: detect overpower ourselves (e.g. mechanical power sum |tauEst*dq|
+        # over a budget) and `self._stop.set()` to trigger the damping+idle dump.
+        self._safe.PowerProtect(self._cmd, self._low_state, 9)
         self._udp.SetSend(self._cmd)
         self._udp.Send()
 
@@ -374,7 +380,7 @@ class Hardware:
         """Write a PD position target to ``cmd``, converting IsaacLab -> SDK joint order."""
         if not np.all(np.isfinite(target_q_isaac)):
             raise RuntimeError(f"NaN/Inf in joint target: {target_q_isaac}")
-        q = np.clip(target_q_isaac, _Q_LO_ISAAC, _Q_HI_ISAAC)[isaac_to_mujoco_joints]
+        q = np.clip(target_q_isaac, self._spec.q_lo, self._spec.q_hi)[isaac_to_sdk_joints]
         for i in range(12):
             self._cmd.motorCmd[i].mode = 0x0A  # servo
             self._cmd.motorCmd[i].q = float(q[i])
@@ -383,21 +389,55 @@ class Hardware:
             self._cmd.motorCmd[i].Kd = kd
             self._cmd.motorCmd[i].tau = 0.0
 
+    def _pd_diag(self) -> tuple[np.ndarray, np.ndarray]:
+        """Per-joint PD torque the SDK is about to apply + position error (SDK order).
+
+        Mirrors the servo law PowerProtect sees pre-clamp:
+        ``tau = Kp*(cmd.q - q) + Kd*(cmd.dq - dq) + cmd.tau`` (here cmd.dq=cmd.tau=0).
+        Call after ``_fill_cmd``, before ``_send``.
+        """
+        c, s = self._cmd, self._low_state
+        pos_err = np.array([c.motorCmd[i].q - s.motorState[i].q for i in range(12)], dtype=np.float32)
+        tau_cmd = np.array(
+            [
+                c.motorCmd[i].Kp * (c.motorCmd[i].q - s.motorState[i].q)
+                + c.motorCmd[i].Kd * (c.motorCmd[i].dq - s.motorState[i].dq)
+                + c.motorCmd[i].tau
+                for i in range(12)
+            ],
+            dtype=np.float32,
+        )
+        return tau_cmd, pos_err
+
     def _io_loop(self) -> None:
         try:
-            print_t = time.perf_counter()
+            print_t = time.perf_counter() - 1
+            peak_tau = np.zeros(12, dtype=np.float32)  # max |tau_cmd| per joint over print window
+            peak_err = np.zeros(12, dtype=np.float32)  # pos_err at the moment of peak tau
             for tick in pace_loop(COMM_LOOP_DT, self._stop):
                 self._recv()
                 self.snap = self._read_snapshot()
                 tgt = self.target
                 if tgt is not None:
                     self._fill_cmd(tgt.q_isaac, tgt.kp, tgt.kd)
+
+                tau_cmd, pos_err = self._pd_diag()
+                hit = np.abs(tau_cmd) > peak_tau
+                peak_tau[hit] = np.abs(tau_cmd)[hit]
+                peak_err[hit] = pos_err[hit]
+
                 self._send()
 
                 now = time.perf_counter()
                 if now - print_t > 1.0:
-                    print(f"IO LOOP WORK: {now - tick:.4f}")
+                    j = int(np.argmax(peak_tau))  # worst joint this window
+                    tau_act = float(self._low_state.motorState[j].tauEst)
+                    print(
+                        f"IO LOOP WORK: {now - tick:.4f} | peak |tau_cmd|={peak_tau[j]:.1f}Nm "
+                        f"@{sdk_joint_names[j]} (pos_err={peak_err[j]:+.3f}rad, tauEst={tau_act:+.1f}Nm)"
+                    )
                     print_t = now
+                    peak_tau[:] = 0.0
         finally:
             print(f"Damping for {DAMPING_SETTLE_S:.0f} s, then cutting power...")
             self._fill_damping()
@@ -501,7 +541,7 @@ class PolicyRunner:
                     [self._teleop.state.lin_x, self._teleop.state.lin_y, self._teleop.state.ang_z],
                     dtype=np.float32,
                 )
-                self._est.update(snap, POLICY_LOOP_DT)
+                self._est.update(snap, POLICY_LOOP_DT)  # TODO: estimator is not always needed
                 obs = self._build_obs(snap, self._est, vel_cmd, self._last_action)
                 action = self._act_fn(self._agent, obs)
 
@@ -538,8 +578,10 @@ def run(
     build_obs_fn=None,
     act_fn=None,
 ) -> None:
-    """Start teleop, hardware, ramp, then run the policy until stop or error."""
+    """Register stop at exit, start teleop, hardware, ramp, then run the policy until stop event or error."""
     global _session
+
+    atexit.register(stop)
 
     hw = Hardware(spec, low_ip=low_ip)
     runner = PolicyRunner(
@@ -551,24 +593,19 @@ def run(
         build_obs_fn=build_obs_fn,
         act_fn=act_fn,
     )
+
     with _session_lock:
         _session = (hw, runner)
 
-    try:
-        teleop.start()
-        hw.start()
-        runner.ramp_to_home()
-        runner.start()
-        runner.stop_event.wait()
-    finally:
-        runner.stop()
-        hw.stop()
-        with _session_lock:
-            _session = None
+    teleop.start()
+    hw.start()
+    runner.ramp_to_home()
+    runner.start()
+    runner.stop_event.wait()
 
 
 def stop() -> None:
-    """Idempotent shutdown. Safe to call from any thread."""
+    """Idempotent shutdown. Safe to call from any thread. Registered at exit in the run function."""
     with _session_lock:
         sess = _session
     if sess is None:
