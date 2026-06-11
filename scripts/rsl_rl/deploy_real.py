@@ -9,21 +9,19 @@ Usage:
 """
 
 import argparse
-import importlib
-import os
 
 parser = argparse.ArgumentParser(description="Deploy distilled RSL-RL student on Unitree hardware.")
 parser.add_argument("--checkpoint", type=str, required=True, help="Path to exported policy.pt (TorchScript).")
-parser.add_argument(
-    "--hardware",
-    type=str,
-    required=True,
-    choices=["go1", "aliengo"],
-    help="Target hardware module.",
-)
+parser.add_argument("--hardware", type=str, required=True, choices=["go1", "aliengo"], help="Target hardware module.")
 args_cli = parser.parse_args()
 
+import contextlib
+import importlib
+import os
+
 import torch
+
+torch.set_num_threads(1)
 
 
 def main():
@@ -35,12 +33,8 @@ def main():
     policy.eval()
     policy.reset()
 
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         hw_mod.run(policy)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        hw_mod.stop()
 
 
 if __name__ == "__main__":
