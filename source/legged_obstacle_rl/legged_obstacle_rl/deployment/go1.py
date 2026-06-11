@@ -28,17 +28,38 @@ from typing import Iterator, Optional
 import numpy as np
 import torch
 
-from legged_obstacle_rl.tasks.mujoco.velocity_env import (
-    GRAVITY_VEC,
-    isaac_home_jpos,
-    isaac_to_mujoco_joints,
-    mujoco_to_isaac_joints,
-    quat_apply_inverse,
-)
 from legged_obstacle_rl import teleop
+from legged_obstacle_rl.tasks.mujoco.utils import map_indexes, normalize, quat_apply_inverse
 
 sys.path.insert(0, os.path.expanduser("~/Projects/unitree_legged_sdk/lib/python/amd64"))
 import robot_interface as sdk  # pyright: ignore[reportMissingImports]
+
+# fmt: off
+# Joint Order in MuJoCo
+mujoco_joint_names = [
+    "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint",
+    "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint",
+    "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint",
+    "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint",
+]
+# Joint Order in IsaacLab
+isaac_joint_names = [
+    "FL_hip_joint",   "FR_hip_joint",   "RL_hip_joint",   "RR_hip_joint",
+    "FL_thigh_joint", "FR_thigh_joint", "RL_thigh_joint", "RR_thigh_joint",
+    "FL_calf_joint",  "FR_calf_joint",  "RL_calf_joint",  "RR_calf_joint",
+]
+# Home joint positions in IsaacLab
+isaac_home_jpos = np.array([
+     0.1, -0.1,  0.1, -0.1, # hips
+     0.8,  0.8,  1.0,  1.0, # thighs
+    -1.5, -1.5, -1.5, -1.5, # calves
+])
+# fmt: on
+isaac_to_mujoco_joints = map_indexes(target=mujoco_joint_names, source=isaac_joint_names)
+mujoco_to_isaac_joints = map_indexes(target=isaac_joint_names, source=mujoco_joint_names)
+
+ZERO_ACTION = np.zeros(12, dtype=np.float32)
+GRAVITY_VEC = normalize(np.array([[0.0, 0.0, -9.81]], dtype=np.float32)).squeeze(0)
 
 # PD regulator
 KP = 35.0
@@ -55,6 +76,10 @@ DT = 0.02  # 50 Hz policy
 RAMP_STEPS = 300  # startup ramp to home position
 RAMP_KP = 5.0  # soft gains during ramp
 RAMP_KD = 1.0
+
+# Shutdown
+DAMPING_KD = 2.0  # servo Kd while robot settles after stop
+DAMPING_SETTLE_S = 3.0  # seconds of active damping before motor cut
 
 # Height scanner
 ISAAC_OFFSET = 0.5
@@ -77,6 +102,17 @@ _CONTACT_TAU_THRESH = 3.0  # Nm; |tauEst| below this -> swing leg
 
 ACTION_SCALE = 0.25
 DEFAULT_BASE_HEIGHT = 0.28
+
+# Joint limits in IsaacLab order: [hip x4, thigh x4, calf x4]
+# Source: unitree_go1/go1.xml and go1.urdf
+_Q_LO_ISAAC = np.array(
+    [-0.863, -0.863, -0.863, -0.863, -0.686, -0.686, -0.686, -0.686, -2.818, -2.818, -2.818, -2.818],
+    dtype=np.float32,
+)
+_Q_HI_ISAAC = np.array(
+    [0.863, 0.863, 0.863, 0.863, 4.501, 4.501, 4.501, 4.501, -0.888, -0.888, -0.888, -0.888],
+    dtype=np.float32,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +197,37 @@ def build_obs(
     return obs
 
 
+def build_obs_proprio(
+    s: SensorSnapshot,
+    est: EstimatorState,
+    vel_cmd: np.ndarray,
+    last_action: np.ndarray,
+) -> np.ndarray:
+    """Construct 45-dim proprio-only obs for direction-task distilled student (no height scan).
+
+    vel_cmd is [lin_x, lin_y, ang_z] from teleop; converted to [cos θ, sin θ, ω].
+    Obs order matches IsaacLab direction-task policy group:
+    joint_pos → base_ang_vel → joint_vel → projected_gravity → direction_commands → last_action
+    """
+    lin_x, lin_y, ang_z = vel_cmd
+    mag = np.hypot(lin_x, lin_y)
+    yaw = np.arctan2(lin_y, lin_x) if mag > 1e-3 else 0.0
+    dir_cmd = np.array([np.cos(yaw), np.sin(yaw), ang_z], dtype=np.float32)
+    gravity = quat_apply_inverse(s.quat, GRAVITY_VEC)
+    obs = np.concatenate(
+        [
+            s.q_isaac - isaac_home_jpos,  # 12
+            s.gyro_body,  #  3
+            s.dq_isaac,  # 12
+            gravity,  #  3
+            dir_cmd,  #  3
+            last_action,  # 12
+        ]
+    )
+    assert obs.shape == (45,), f"Obs size mismatch: {obs.shape}"
+    return obs
+
+
 def pace_loop(dt: float, stop: threading.Event) -> Iterator[float]:
     """Yield once per ``dt`` seconds until ``stop`` is set. Drift-free."""
     next_t = time.perf_counter()
@@ -177,29 +244,6 @@ def pace_loop(dt: float, stop: threading.Event) -> Iterator[float]:
 # ---------------------------------------------------------------------------
 
 
-def _fill_cmd(cmd: sdk.LowCmd, target_q_isaac: np.ndarray, kp: float, kd: float) -> None:
-    """Write a PD position target to ``cmd``, converting IsaacLab -> SDK joint order."""
-    q = target_q_isaac[isaac_to_mujoco_joints]
-    for i in range(12):
-        cmd.motorCmd[i].mode = 0x0A  # servo
-        cmd.motorCmd[i].q = float(q[i])
-        cmd.motorCmd[i].dq = 0.0
-        cmd.motorCmd[i].Kp = kp
-        cmd.motorCmd[i].Kd = kd
-        cmd.motorCmd[i].tau = 0.0
-
-
-def _fill_damping(cmd: sdk.LowCmd) -> None:
-    """Put all motors in damping mode so the robot settles gently."""
-    for i in range(12):
-        cmd.motorCmd[i].mode = 0x00  # damping
-        cmd.motorCmd[i].Kp = 0.0
-        cmd.motorCmd[i].Kd = 0.0
-        cmd.motorCmd[i].tau = 0.0
-        cmd.motorCmd[i].q = 0.0
-        cmd.motorCmd[i].dq = 0.0
-
-
 class Go1Hardware:
     """Single owner of the Unitree SDK UDP socket.
 
@@ -209,9 +253,9 @@ class Go1Hardware:
     dedicated lock.
     """
 
-    def __init__(self):
-        self._udp = sdk.UDP(LOWLEVEL, LOW_LOCAL_PORT, LOW_IP, LOW_ROBOT_PORT)
-        self._safe = sdk.Safety(sdk.LeggedType.Go1)
+    def __init__(self, low_ip: str = LOW_IP, legged_type=sdk.LeggedType.Go1):
+        self._udp = sdk.UDP(LOWLEVEL, LOW_LOCAL_PORT, low_ip, LOW_ROBOT_PORT)
+        self._safe = sdk.Safety(legged_type)
         self._cmd = sdk.LowCmd()
         self._low_state = sdk.LowState()
         self._udp.InitCmdData(self._cmd)
@@ -272,29 +316,75 @@ class Go1Hardware:
             gyro_body=np.array(s.imu.gyroscope, dtype=np.float32),
         )
 
+    def _send(self):
+        self._safe.PowerProtect(self._cmd, self._low_state, 1)
+        self._fill_damping()
+        self._udp.SetSend(self._cmd)
+        self._udp.Send()
+
+    def _recv(self):
+        self._udp.Recv()
+        self._udp.GetRecv(self._low_state)
+
+    def _fill_damping(self) -> None:
+        """Servo mode, zero Kp, nonzero Kd — robot settles gently under gravity."""
+        for i in range(12):
+            self._cmd.motorCmd[i].mode = 0x0A  # servo
+            self._cmd.motorCmd[i].Kp = 0.0
+            self._cmd.motorCmd[i].Kd = DAMPING_KD
+            self._cmd.motorCmd[i].tau = 0.0
+            self._cmd.motorCmd[i].q = 0.0
+            self._cmd.motorCmd[i].dq = 0.0
+
+    def _fill_idle(self) -> None:
+        """Cut motor power entirely after robot has settled."""
+        for i in range(12):
+            self._cmd.motorCmd[i].mode = 0x00  # cut off power
+            self._cmd.motorCmd[i].Kp = 0.0
+            self._cmd.motorCmd[i].Kd = 0.0
+            self._cmd.motorCmd[i].tau = 0.0
+            self._cmd.motorCmd[i].q = 0.0
+            self._cmd.motorCmd[i].dq = 0.0
+
+    def _fill_cmd(self, target_q_isaac: np.ndarray, kp: float, kd: float) -> None:
+        """Write a PD position target to ``cmd``, converting IsaacLab -> SDK joint order."""
+        if not np.all(np.isfinite(target_q_isaac)):
+            raise RuntimeError(f"NaN/Inf in joint target: {target_q_isaac}")
+        q = np.clip(target_q_isaac, _Q_LO_ISAAC, _Q_HI_ISAAC)[isaac_to_mujoco_joints]
+        for i in range(12):
+            self._cmd.motorCmd[i].mode = 0x0A  # servo
+            self._cmd.motorCmd[i].q = float(q[i])
+            self._cmd.motorCmd[i].dq = 0.0
+            self._cmd.motorCmd[i].Kp = kp
+            self._cmd.motorCmd[i].Kd = kd
+            self._cmd.motorCmd[i].tau = 0.0
+
     def _io_loop(self) -> None:
         try:
             print_t = time.perf_counter()
             for tick in pace_loop(COMM_LOOP_DT, self._stop):
-                self._udp.Recv()
-                self._udp.GetRecv(self._low_state)
+                self._recv()
                 self.snap = self._read_snapshot()
                 tgt = self.target
                 if tgt is not None:
-                    _fill_cmd(self._cmd, tgt.q_isaac, tgt.kp, tgt.kd)
-                self._safe.PowerProtect(self._cmd, self._low_state, 1)
-                self._udp.SetSend(self._cmd)
-                self._udp.Send()
+                    self._fill_cmd(tgt.q_isaac, tgt.kp, tgt.kd)
+                self._send()
 
                 now = time.perf_counter()
                 if now - print_t > 1.0:
                     print(f"IO LOOP WORK: {now - tick:.4f}")
                     print_t = now
         finally:
-            _fill_damping(self._cmd)
-            self._udp.SetSend(self._cmd)
-            self._udp.Send()
-            print("Motors set to damping mode.")
+            print(f"Damping for {DAMPING_SETTLE_S:.0f} s, then cutting power...")
+            self._fill_damping()
+            deadline = time.perf_counter() + DAMPING_SETTLE_S
+            while time.perf_counter() < deadline:
+                self._recv()
+                self._send()
+                time.sleep(COMM_LOOP_DT)
+            self._fill_idle()
+            self._send()
+            print("Motors cut.")
 
 
 # ---------------------------------------------------------------------------
@@ -312,14 +402,28 @@ def _act(agent, obs: np.ndarray) -> np.ndarray:
 class PolicyRunner:
     """Owns the policy thread and the policy-side state (estimator, last action)."""
 
-    def __init__(self, hw: Go1Hardware, agent, teleop_) -> None:
+    def __init__(
+        self,
+        hw: Go1Hardware,
+        agent,
+        teleop_,
+        *,
+        kp: float = KP,
+        kd: float = KD,
+        build_obs_fn=None,
+        act_fn=None,
+    ) -> None:
         self.stop_event = threading.Event()
 
         self._hw = hw
         self._agent = agent
         self._teleop = teleop_
+        self._kp = kp
+        self._kd = kd
+        self._build_obs = build_obs_fn if build_obs_fn is not None else build_obs
+        self._act_fn = act_fn if act_fn is not None else _act
         self._est = EstimatorState()
-        self._last_action = isaac_home_jpos.copy()
+        self._last_action = np.zeros(12, dtype=np.float32)
         self._thread: Optional[threading.Thread] = None
 
     def _wait_for_valid_snap(self, timeout_s: float = 5.0) -> SensorSnapshot:
@@ -328,6 +432,7 @@ class PolicyRunner:
             if self.stop_event.is_set() or self._teleop.state.stop:
                 raise RuntimeError("aborted while waiting for SDK state")
             snap = self._hw.snap
+            print(snap)
             if snap is not None and np.any(snap.q_isaac != 0.0):
                 return snap
             time.sleep(0.01)
@@ -377,10 +482,10 @@ class PolicyRunner:
                     dtype=np.float32,
                 )
                 self._est.update(snap, POLICY_LOOP_DT)
-                obs = build_obs(snap, self._est, vel_cmd, self._last_action)
-                action = _act(self._agent, obs)
+                obs = self._build_obs(snap, self._est, vel_cmd, self._last_action)
+                action = self._act_fn(self._agent, obs)
 
-                self._hw.target = MotorTarget(isaac_home_jpos + action * ACTION_SCALE, KP, KD)
+                self._hw.target = MotorTarget(isaac_home_jpos + action * ACTION_SCALE, self._kp, self._kd)
                 self._last_action = action.copy()
 
                 now = time.perf_counter()
@@ -403,12 +508,21 @@ _session_lock = threading.Lock()
 _session: Optional[tuple[Go1Hardware, PolicyRunner]] = None
 
 
-def run(agent) -> None:
+def run(
+    agent,
+    *,
+    kp: float = KP,
+    kd: float = KD,
+    low_ip: str = LOW_IP,
+    legged_type=sdk.LeggedType.Go1,
+    build_obs_fn=None,
+    act_fn=None,
+) -> None:
     """Start teleop, hardware, ramp, then run the policy until stop or error."""
     global _session
 
-    hw = Go1Hardware()
-    runner = PolicyRunner(hw, agent, teleop)
+    hw = Go1Hardware(low_ip=low_ip, legged_type=legged_type)
+    runner = PolicyRunner(hw, agent, teleop, kp=kp, kd=kd, build_obs_fn=build_obs_fn, act_fn=act_fn)
     with _session_lock:
         _session = (hw, runner)
 
@@ -445,6 +559,12 @@ __all__ = [
     "MotorTarget",
     "EstimatorState",
     "build_obs",
+    "build_obs_proprio",
     "estimate_base_height",
     "pace_loop",
+    "GRAVITY_VEC",
+    "isaac_home_jpos",
+    "KP",
+    "KD",
+    "LOW_IP",
 ]

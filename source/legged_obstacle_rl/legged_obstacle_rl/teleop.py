@@ -4,8 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from evdev import InputDevice, categorize, ecodes, list_devices
-from isaaclab.envs import ManagerBasedRLEnv
-from legged_obstacle_rl.tasks.manager_based.mdp.commands.protocols import TeleopCommand
+# from legged_obstacle_rl.tasks.manager_based.mdp.commands.protocols import TeleopCommand
 
 
 @dataclass
@@ -93,7 +92,7 @@ def start():
     teleop_thread.start()
 
 
-def apply(env: ManagerBasedRLEnv):
+def apply(env):
     """Push the current teleop `state` into every command term that supports it.
 
     Loops the env's active command terms and calls ``inject_teleop(state)`` on any term that
@@ -104,10 +103,9 @@ def apply(env: ManagerBasedRLEnv):
     command_manager = env.command_manager
     for name in command_manager.active_terms:
         term = command_manager.get_term(name)
-        if isinstance(term, TeleopCommand):
+        try:
             term.inject_teleop(state)
-
-        else:
+        except Exception as e:
             print(f"Term {term.__name__} does not implements teleop protocol, cannot inject commands")
 
 
