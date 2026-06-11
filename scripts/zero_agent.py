@@ -13,27 +13,15 @@ from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Zero agent for Isaac Lab environments.")
 parser.add_argument(
-    "--disable_fabric",
+    "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
+)
+parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
+parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+parser.add_argument("--print_obs", action="store_true", help="Print observations.")
+parser.add_argument(
+    "--log_obs",
     action="store_true",
-    default=False,
-    help="Disable fabric and use USD I/O operations.",
-)
-parser.add_argument(
-    "--num_envs",
-    type=int,
-    default=None,
-    help="Number of environments to simulate.",
-)
-parser.add_argument(
-    "--task",
-    type=str,
-    default=None,
-    help="Name of the task.",
-)
-parser.add_argument(
-    "--print_obs",
-    action="store_true",
-    help="Print observations.",
+    help="Log env-0 policy obs + action to this .npz (StepLogger format) for sim2real compare.",
 )
 
 AppLauncher.add_app_launcher_args(parser)
@@ -47,6 +35,7 @@ simulation_app = app_launcher.app
 import gymnasium as gym
 import legged_obstacle_rl.tasks  # noqa: F401
 import torch
+from legged_obstacle_rl.deployment.obs_log import log_step
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
@@ -60,20 +49,20 @@ def main():
         num_envs=args_cli.num_envs,
         use_fabric=not args_cli.disable_fabric,
     )
-    env = gym.make(args_cli.task, cfg=env_cfg)
+    with gym.make(args_cli.task, cfg=env_cfg) as env:
+        print(f"[INFO]: Gym observation space: {env.observation_space}")
+        print(f"[INFO]: Gym action space: {env.action_space}")
 
-    print(f"[INFO]: Gym observation space: {env.observation_space}")
-    print(f"[INFO]: Gym action space: {env.action_space}")
-
-    env.reset()
-    while simulation_app.is_running():
-        with torch.inference_mode():
-            actions = torch.zeros(env.action_space.shape, device=env.unwrapped.device)
-            obs, _, _, _, _ = env.step(actions)
+        obs, _ = env.reset()
+        while simulation_app.is_running():
+            with torch.inference_mode():
+                actions = torch.zeros(env.action_space.shape, device=env.unwrapped.device)
+                obs, _, _, _, _ = env.step(actions)
             if args_cli.print_obs:
                 print(obs)
-
-    env.close()
+            if args_cli.log_obs:
+                policy_obs = obs["policy"] if isinstance(obs, dict) else obs
+                log_step(policy_obs[0].cpu().numpy(), actions[0].cpu().numpy())
 
 
 if __name__ == "__main__":
