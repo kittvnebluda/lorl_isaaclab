@@ -66,6 +66,7 @@ import gymnasium as gym
 import legged_obstacle_rl.tasks  # noqa: F401
 import torch
 from legged_obstacle_rl import teleop
+from legged_obstacle_rl.utils import plot_torques
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
 
 from isaaclab.envs import (
@@ -156,32 +157,42 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     obs = env.get_observations()
     timestep = 0
 
+    robot = env.unwrapped.scene["robot"]
+    joint_names = robot.joint_names
+    torque_log: list = []
+
     if args_cli.teleop:
         teleop.start()
 
-    while simulation_app.is_running():
-        start_time = time.time()
+    try:
+        while simulation_app.is_running():
+            start_time = time.time()
 
-        if args_cli.teleop:
-            teleop.apply(env)
-            teleop.print_commands()
+            if args_cli.teleop:
+                if teleop.state.stop:
+                    break
+                teleop.apply(env)
+                teleop.print_commands()
 
-        with torch.inference_mode():
-            actions = policy(obs)
-            obs, _, dones, _ = env.step(actions)
-            policy.reset(dones)
+            with torch.inference_mode():
+                actions = policy(obs)
+                obs, _, dones, _ = env.step(actions)
+                policy.reset(dones)
 
-        if args_cli.video:
-            timestep += 1
-            if timestep == args_cli.video_length:
-                break
+            torque_log.append(robot.data.applied_torque[0].cpu().numpy())
 
-        # time delay for real-time evaluation
-        sleep_time = dt - (time.time() - start_time)
-        if args_cli.real_time and sleep_time > 0:
-            time.sleep(sleep_time)
+            if args_cli.video:
+                timestep += 1
+                if timestep == args_cli.video_length:
+                    break
 
-    env.close()
+            # time delay for real-time evaluation
+            sleep_time = dt - (time.time() - start_time)
+            if args_cli.real_time and sleep_time > 0:
+                time.sleep(sleep_time)
+    finally:
+        env.close()
+        plot_torques(torque_log, joint_names, dt, log_dir)
 
 
 if __name__ == "__main__":

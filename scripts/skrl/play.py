@@ -92,6 +92,7 @@ elif args_cli.ml_framework.startswith("jax"):
 
 import legged_obstacle_rl.tasks  # noqa: F401
 from legged_obstacle_rl import teleop
+from legged_obstacle_rl.utils import plot_torques
 
 from isaaclab.envs import (
     DirectMARLEnv,
@@ -206,34 +207,46 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, cfg:
         timestep = 0
         torch.set_printoptions(threshold=float("inf"))
 
+        robot = env.scene["robot"]
+        joint_names = robot.joint_names
+        torque_log: list = []
+
         if args_cli.teleop:
             teleop.start()
 
-        while simulation_app.is_running():
-            start_time = time.time()
+        try:
+            while simulation_app.is_running():
+                start_time = time.time()
 
-            if args_cli.teleop:
-                teleop.apply(env)
-                teleop.print_commands()
+                if args_cli.teleop:
+                    if teleop.state.stop:
+                        break
+                    teleop.apply(env)
+                    teleop.print_commands()
 
-            with torch.inference_mode():
-                outputs = runner.agent.act(obs, timestep=0, timesteps=0)
-                # - multi-agent (deterministic) actions
-                if hasattr(env, "possible_agents"):
-                    actions = {a: outputs[-1][a].get("mean_actions", outputs[0][a]) for a in env.possible_agents}
-                # - single-agent (deterministic) actions
-                else:
-                    actions = outputs[-1].get("mean_actions", outputs[0])
-                obs, _, _, _, _ = env.step(actions)
+                with torch.inference_mode():
+                    outputs = runner.agent.act(obs, timestep=0, timesteps=0)
+                    # - multi-agent (deterministic) actions
+                    if hasattr(env, "possible_agents"):
+                        actions = {a: outputs[-1][a].get("mean_actions", outputs[0][a]) for a in env.possible_agents}
+                    # - single-agent (deterministic) actions
+                    else:
+                        actions = outputs[-1].get("mean_actions", outputs[0])
+                    obs, _, _, _, _ = env.step(actions)
 
-            if args_cli.video:
-                timestep += 1
-                if timestep == args_cli.video_length:
-                    break
+                torque_log.append(robot.data.applied_torque[0].cpu().numpy())
 
-            sleep_time = dt - (time.time() - start_time)
-            if args_cli.real_time and sleep_time > 0:
-                time.sleep(sleep_time)
+                if args_cli.video:
+                    timestep += 1
+                    if timestep == args_cli.video_length:
+                        break
+
+                sleep_time = dt - (time.time() - start_time)
+                if args_cli.real_time and sleep_time > 0:
+                    time.sleep(sleep_time)
+        finally:
+            env.close()
+            plot_torques(torque_log, joint_names, dt, log_dir)
 
 
 if __name__ == "__main__":
