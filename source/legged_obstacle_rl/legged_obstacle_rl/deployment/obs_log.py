@@ -95,3 +95,10 @@ def log_step(obs: np.ndarray, action: np.ndarray) -> None:
         _LOGGER = StepLogger(path)
         print(f"[obs_log] logging obs+action to {_LOGGER.path} (set by LORL_OBS_LOG)")
     _LOGGER.log(obs=obs, action=action)
+
+
+def flush_step_log() -> None:
+    """Force-save the gated singleton logger. Call before a hard process exit
+    (e.g. ``simulation_app.close()``) that would otherwise skip atexit handlers."""
+    if _LOGGER is not None:
+        _LOGGER.save()

@@ -35,7 +35,7 @@ simulation_app = app_launcher.app
 import gymnasium as gym
 import legged_obstacle_rl.tasks  # noqa: F401
 import torch
-from legged_obstacle_rl.deployment.obs_log import log_step
+from legged_obstacle_rl.deployment.obs_log import flush_step_log, log_step
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
@@ -53,6 +53,7 @@ def main():
         print(f"[INFO]: Gym observation space: {env.observation_space}")
         print(f"[INFO]: Gym action space: {env.action_space}")
 
+        step = 0
         obs, _ = env.reset()
         while simulation_app.is_running():
             with torch.inference_mode():
@@ -63,6 +64,9 @@ def main():
             if args_cli.log_obs:
                 policy_obs = obs["policy"] if isinstance(obs, dict) else obs
                 log_step(policy_obs[0].cpu().numpy(), actions[0].cpu().numpy())
+            if step % 500 == 0:
+                flush_step_log()
+            step += 1
 
 
 if __name__ == "__main__":
