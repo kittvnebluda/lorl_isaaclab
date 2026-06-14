@@ -8,11 +8,11 @@ Reinforcement learning for the Unitree Go1 quadruped on rough terrain, using [Is
 
 - Velocity-commanded and direction-commanded locomotion policies
 - Curriculum over 8 procedurally generated terrain types
-- MuJoCo sim2sim deployment with learned actuator model (MLP)
-- Keyboard teleop in both IsaacLab (play) and MuJoCo (deploy)
-- TensorBoard logging of custom scalars and hyperparameters
+- MuJoCo sim2sim deployment with learned actuator model from [walk-these-ways](https://github.com/Improbable-AI/walk-these-ways)
+- Keyboard teleop in both IsaacLab (play) and MuJoCo (deploy_mujoco)
+- TensorBoard logging
 
-**Keywords:** unitree, go1, isaaclab, skrl, legged-robotics, sim2sim, mujoco
+**Keywords:** unitree, go1, aliengo, isaaclab, rsl_rl, skrl, legged-robotics, sim2sim, mujoco
 
 ## Installation
 
@@ -27,70 +27,29 @@ python -m pip install -e source/legged_obstacle_rl
 Verify by listing available environments:
 
 ```bash
-python scripts/skrl/list_envs.py
+python scripts/list_envs.py
 ```
 
-## Environments
+### Cache Robot Assets Locally (optional, avoids Nucleus timeouts)
 
-### IsaacLab — Velocity Commanded
+Robot USDs default to NVIDIA's remote Nucleus server, so every launch streams
+them over the network. Download them once to a local cache to start offline
+and avoid server timeouts:
 
-| Environment ID | Description |
-|---|---|
-| `LORL-Go1Rough-RL-v0` | Training: velocity commands, rough terrain curriculum |
-| `LORL-Go1Rough-RL-Play-v0` | Evaluation: reduced envs, no randomization |
-| `LORL-Go1Rough-RL-Play-ICRA-v0` | Evaluation: single env on custom ICRA map |
-| `LORL-Go1Rough-RL-LongArch-v0` | Training: baseline env, larger network architecture |
-| `LORL-Go1Rough-RL-LongArch-Play-v0` | Evaluation: LongArch |
-| `LORL-Go1Rough-RL-LongArch-Play-ICRA-v0` | Evaluation: LongArch, ICRA map |
-| `LORL-Go1Rough-RL-WideArch-v0` | Training: baseline env, wider network architecture |
-| `LORL-Go1Rough-RL-WideArch-Play-v0` | Evaluation: WideArch |
-| `LORL-Go1Rough-RL-WideArch-Play-ICRA-v0` | Evaluation: WideArch, ICRA map |
-| `LORL-Go1RoughLongHistory-RL-v0` | Training: 15-step observation history |
-| `LORL-Go1RoughLongHistory-RL-Play-v0` | Evaluation: 15-step history |
-| `LORL-Go1RoughLongHistory-RL-Play-ICRA-v0` | Evaluation: 15-step history, ICRA map |
-| `LORL-Go1Argo-RL-v0` | Training: Argo env variant |
-| `LORL-Go1Argo-RL-Play-v0` | Evaluation: Argo variant |
-| `LORL-Go1Argo-RL-H15-v0` | Training: Argo with 15-step history |
-| `LORL-Go1Argo-RL-H15-Play-v0` | Evaluation: Argo with 15-step history |
+```bash
+python scripts/download_assets.py            # downloads Aliengo + Go1 to ~/.cache/legged_obstacle_rl/assets
+# or a custom location:
+python scripts/download_assets.py --dest /data/lorl_assets
+export LORL_ASSETS_DIR=/data/lorl_assets     # if you used --dest, point training at it
+```
 
-### IsaacLab — Direction Commanded
-
-| Environment ID | Description |
-|---|---|
-| `LORL-Go1Direction-RL-v0` | Training: direction vector command |
-| `LORL-Go1Direction-RL-Play-v0` | Evaluation |
-| `LORL-Go1Direction-RL-Play-ICRA-v0` | Evaluation on ICRA map |
-
-Robot receives a direction unit vector and learns to move toward it. Rewards orientation and velocity alignment; penalizes orthogonal drift.
-
-### MuJoCo — Sim2Sim
-
-| Environment ID | Description |
-|---|---|
-| `LORL-Go1Rough-MJ-v0` | Go1 rough terrain in MuJoCo |
-| `LORL-Go1Argo-MJ-v0` | Argo env in MuJoCo |
-| `LORL-Go1ArgoH-MJ-v0` | Argo env with longer history in MuJoCo |
-
-Uses a learned MLP actuator model (`ActuatorNetMLP`) trained to replicate Go1 joint dynamics. Observation space: 235-dim (joint positions, velocities, base state, projected gravity, velocity commands, height scan).
-
-## Terrain
-
-8 procedurally generated sub-terrain types with curriculum difficulty scaling:
-
-| Type | Description |
-|---|---|
-| Pyramid stairs (ascending) | Steps 0.05–0.23 m high, 0.3 m wide |
-| Pyramid stairs (descending) | Inverted pyramid |
-| Random boxes | Grid of boxes 0.05–0.2 m high |
-| Random rough | Perlin noise 0.01–0.06 m amplitude |
-| Sloped pyramid (ascending) | Slope 0–0.4 |
-| Sloped pyramid (descending) | Inverted slope |
-| Square holes | Flat terrain with 0.3 m square holes |
-| Diamond walkway | Beam grid mesh |
+After this, `ALIENGO_CFG` / `GO1_CFG` resolve to the local copies automatically.
+If an asset is missing locally, they fall back to the Nucleus
+URL --- nothing breaks before the download. Re-run with `--force` to refresh.
 
 ## Scripts
 
-### Train (IsaacLab)
+### Train (skrl)
 
 ```bash
 python scripts/skrl/train.py \
@@ -103,9 +62,48 @@ python scripts/skrl/train.py \
     [--algorithm PPO]
 ```
 
-Logs to `logs/skrl/` and `outputs/`. TensorBoard metrics include velocity tracking, terrain level, and custom hyperparameters.
+Logs to `logs/skrl/` and `outputs/`. TensorBoard metrics include velocity
+tracking, terrain level, and custom hyperparameters.
 
-### Play / Evaluate (IsaacLab)
+### Teacher–Student Training (rsl_rl)
+
+Two-phase privileged-learning + distillation for the AlienGo direction task.
+Phase A trains a privileged teacher with PPO; Phase B distills it into
+a proprioception-only GRU student via DAgger. Both phases log under `logs/rsl_rl/aliengo_direction/`.
+
+**Phase A — teacher (privileged PPO, symmetry augmentation, clean observations):**
+
+```bash
+python scripts/rsl_rl/train.py \
+    --task LORL-AlienGoDirection-RL-v0 \
+    --num_envs 4096 \
+    --max_iterations 1500 \
+    --run_name teacher \
+    --headless
+```
+
+Writes checkpoints to `logs/rsl_rl/aliengo_direction/<timestamp>_teacher/`.
+
+**Phase B — student (GRU DAgger distillation, noisy proprioception):**
+
+```bash
+python scripts/rsl_rl/train.py \
+    --task LORL-AlienGoDirection-RL-Distill-v0 \
+    --agent rsl_rl_distillation_cfg_entry_point \
+    --num_envs 4096 \
+    --max_iterations 1000 \
+    --load_run <timestamp>_teacher \
+    --checkpoint model_1499.pt \
+    --run_name student \
+    --headless
+```
+
+`--agent rsl_rl_distillation_cfg_entry_point` selects the distillation runner; `--load_run`
+and `--checkpoint` point at the Phase A teacher (resolved within the shared
+`aliengo_direction` experiment root). The student imitates the teacher's actions
+while acting on corrupted proprioception.
+
+### Play / Evaluate (skrl)
 
 ```bash
 python scripts/skrl/play.py \
@@ -131,17 +129,10 @@ python scripts/skrl/deploy.py \
 
 Loads a checkpoint trained in IsaacLab and runs it in MuJoCo. Records action history and plots at end of episode.
 
-### Export Weights
-
-Saves policy and preprocessor weights separately for deployment:
-
-```bash
-python scripts/skrl/deploy.py --task=... --checkpoint PATH
-```
-
 ## Teleop Controls
 
-Available in both `play.py` (`--teleop`) and `deploy.py` (`--teleop`). Requires Linux evdev.
+Available in both `play.py` (`--teleop`) and `deploy.py` (`--teleop`).
+Requires Linux evdev python package.
 
 | Key | Action | Range |
 |-----|--------|-------|
@@ -151,8 +142,6 @@ Available in both `play.py` (`--teleop`) and `deploy.py` (`--teleop`). Requires 
 | Y / H | Body height +/- | [0.1, 0.5] m |
 | Ctrl+L | Toggle command lock | — |
 | ESC | Stop | — |
-
-MuJoCo deploy additionally uses WASD/QE/RF keys.
 
 ## MuJoCo Setup
 
@@ -164,7 +153,8 @@ pip install gymnasium[mujoco] skrl
 
 > **Status: work in progress — ROS2 deployment not yet functional.**
 
-A ROS2 workspace is located at `source/legged_obstacle_rl/legged_obstacle_rl/tasks/sim2sim/ros2_ws/` with packages for bringup, description, and Gazebo simulation (in development).
+A ROS2 workspace is located at `source/legged_obstacle_rl/legged_obstacle_rl/tasks/ros2_ws/`
+with packages for bringup, description, and Gazebo simulation.
 
 Install Gazebo Harmonic:
 
