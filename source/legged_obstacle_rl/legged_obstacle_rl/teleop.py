@@ -1,3 +1,4 @@
+import select
 import threading
 import time
 from dataclasses import dataclass
@@ -20,14 +21,41 @@ class TeleopState:
 state = TeleopState()
 
 
+# Substrings of device names that are virtual/forwarded and must NOT be grabbed:
+# they advertise full keyboard caps but emit no local key events.
+_VIRTUAL_KEYBOARD_NAMES = ("rustdesk", "uinput", "virtual", "fake")
+
+# Keys we require a device to expose to count as a real keyboard.
+_REQUIRED_KEYS = (ecodes.KEY_I, ecodes.KEY_K, ecodes.KEY_J, ecodes.KEY_L)
+
+
+def _find_keyboards():
+    """Return all physical keyboard devices (excludes virtual/forwarded ones)."""
+    keyboards = []
+    for path in list_devices():
+        try:
+            dev = InputDevice(path)
+        except OSError:
+            continue  # no permission / busy
+        name = dev.name.lower()
+        if any(v in name for v in _VIRTUAL_KEYBOARD_NAMES):
+            continue
+        keys = dev.capabilities().get(ecodes.EV_KEY, [])
+        if all(k in keys for k in _REQUIRED_KEYS):
+            keyboards.append(dev)
+    return keyboards
+
+
 def _teleop_backend(state_obj):
     """Background worker that listens for keyboard events."""
-    devices = [InputDevice(path) for path in list_devices()]
-    dev = next((d for d in devices if "keyboard" in d.name.lower()), None)
+    devices = _find_keyboards()
 
-    if not dev:
+    if not devices:
         print("Error: No keyboard found. Check permissions/group.")
         return
+
+    print(f"[TELEOP] Listening on: {', '.join(d.name for d in devices)}")
+    fd_to_dev = {d.fd: d for d in devices}
 
     key_map = {
         "KEY_I": ("lin_x", 0.1),
@@ -42,48 +70,59 @@ def _teleop_backend(state_obj):
 
     active_modifiers = set()
 
-    for event in dev.read_loop():
-        if event.type == ecodes.EV_KEY:
-            key_event = categorize(event)
-            # evdev sometimes returns keycodes as a list; normalize to string
-            key_name = key_event.keycode[0] if isinstance(key_event.keycode, list) else key_event.keycode
-            keystate = key_event.keystate
+    while not state_obj.stop:
+        ready, _, _ = select.select(fd_to_dev, [], [], 0.1)
+        for fd in ready:
+            for event in fd_to_dev[fd].read():
+                _handle_event(event, state_obj, key_map, active_modifiers)
+                if state_obj.stop:
+                    return
 
-            # Track modifier keys (Ctrl/Shift)
-            if "CTRL" in key_name or "SHIFT" in key_name:
-                if keystate in (1, 2):
-                    active_modifiers.add(key_name)
-                else:
-                    active_modifiers.discard(key_name)
 
-            # Quit condition
-            if key_name in ("KEY_ESC", "KEY_8"):
-                state_obj.stop = True
-                break
+def _handle_event(event, state_obj, key_map, active_modifiers):
+    if event.type != ecodes.EV_KEY:
+        return
 
-            # Toggle Lock: Ctrl + L
-            if key_name == "KEY_L" and any("CTRL" in m for m in active_modifiers) and keystate == 1:
-                state_obj.lock = not state_obj.lock
-                status = "LOCKED" if state_obj.lock else "UNLOCKED"
-                # Overwrite line temporarily to show status clearly
-                print(f"\r[TELEOP] {status}{' ' * 30}", end="", flush=True)
-                continue  # Skip movement processing
+    key_event = categorize(event)
+    # evdev sometimes returns keycodes as a list; normalize to string
+    key_name = key_event.keycode[0] if isinstance(key_event.keycode, list) else key_event.keycode
+    keystate = key_event.keystate
 
-            # Ignore movement/height commands if locked
-            if state_obj.lock:
-                continue
+    # Track modifier keys (Ctrl/Shift)
+    if "CTRL" in key_name or "SHIFT" in key_name:
+        if keystate in (1, 2):
+            active_modifiers.add(key_name)
+        else:
+            active_modifiers.discard(key_name)
 
-            # Process movement keys
-            if keystate in (1, 2) and key_name in key_map:
-                attr, val = key_map[key_name]
-                new_val = getattr(state_obj, attr) + val
-                setattr(state_obj, attr, new_val)
+    # Quit condition
+    if key_name in ("KEY_ESC", "KEY_8"):
+        state_obj.stop = True
+        return
 
-                # Clamp values
-                state_obj.lin_x = np.clip(state_obj.lin_x, -1.5, 1.5)
-                state_obj.lin_y = np.clip(state_obj.lin_y, -1.5, 1.5)
-                state_obj.ang_z = np.clip(state_obj.ang_z, -1.5, 1.5)
-                state_obj.height = np.clip(state_obj.height, 0.1, 0.5)
+    # Toggle Lock: Ctrl + L
+    if key_name == "KEY_L" and any("CTRL" in m for m in active_modifiers) and keystate == 1:
+        state_obj.lock = not state_obj.lock
+        status = "LOCKED" if state_obj.lock else "UNLOCKED"
+        # Overwrite line temporarily to show status clearly
+        print(f"\r[TELEOP] {status}{' ' * 30}", end="", flush=True)
+        return  # Skip movement processing
+
+    # Ignore movement/height commands if locked
+    if state_obj.lock:
+        return
+
+    # Process movement keys
+    if keystate in (1, 2) and key_name in key_map:
+        attr, val = key_map[key_name]
+        new_val = getattr(state_obj, attr) + val
+        setattr(state_obj, attr, new_val)
+
+        # Clamp values
+        state_obj.lin_x = np.clip(state_obj.lin_x, -1.5, 1.5)
+        state_obj.lin_y = np.clip(state_obj.lin_y, -1.5, 1.5)
+        state_obj.ang_z = np.clip(state_obj.ang_z, -1.5, 1.5)
+        state_obj.height = np.clip(state_obj.height, 0.1, 0.5)
 
 
 def start():
@@ -105,7 +144,7 @@ def apply(env):
         term = command_manager.get_term(name)
         try:
             term.inject_teleop(state)
-        except Exception as e:
+        except Exception:
             print(f"Term {term.__name__} does not implements teleop protocol, cannot inject commands")
 
 
@@ -119,24 +158,4 @@ def print_commands():
     )
 
 
-# Usage example --------------------------------
-
-
-def main():
-    start()
-    print("Teleop thread started.")
-    print("  Move: I/K (Vx), J/L (Vy), U/O (Wz), Y/H (Height)")
-    print("  Toggle Lock: Ctrl+L | Quit: ESC")
-
-    try:
-        while not state.stop:
-            print_commands()
-            time.sleep(0.02)
-    except KeyboardInterrupt:
-        pass
-
-    print("\nRobot control stopped.")
-
-
-if __name__ == "__main__":
-    main()
+__all__ = ["start", "print_commands", "state"]
