@@ -51,6 +51,11 @@ class ObservationsCfg:
     @configclass
     class PrivilligedCfg(ObsGroup):
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
+        foot_contacts = ObsTerm(
+            func=mdp.foot_contact_states,
+            params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_calf")},
+        )
+        # -- scans
         fl_foot_scan = ObsTerm(
             func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("fl_foot_scanner")},
@@ -75,6 +80,7 @@ class ObservationsCfg:
             noise=Unoise(n_min=-0.1, n_max=0.1),
             clip=(-1.0, 1.0),
         )
+        # -- random states
         actuator_gains = ObsTerm(
             func=mdp.actuator_gains,
             params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*")},
@@ -87,10 +93,7 @@ class ObservationsCfg:
             func=mdp.external_torque_b,
             params={"asset_cfg": SceneEntityCfg("robot", body_names="base")},
         )
-        foot_contacts = ObsTerm(
-            func=mdp.foot_contact_states,
-            params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_calf")},
-        )
+        actuator_delay = ObsTerm(func=mdp.actuator_delay)
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -128,6 +131,11 @@ class RewardsCfg:
         func=mdp.undesired_contacts,
         weight=-1.0,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_thigh"), "threshold": 1.0},
+    )
+    base_undesired_contact = RewTerm(
+        func=mdp.undesired_contacts_when_command_nonzero,
+        weight=-2.0,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
     )
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-3.0e-3)
     feet_slide = RewTerm(
@@ -175,14 +183,25 @@ class AlienGoRoughEnvCfg_v0(DirectionRLEnvCfg):
             mode="startup",
             params={
                 "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-                "stiffness_distribution_params": (0.8, 1.2),
-                "damping_distribution_params": (0.8, 1.2),
+                "stiffness_distribution_params": (0.7, 1.3),
+                "damping_distribution_params": (0.7, 1.3),
                 "operation": "scale",
                 "distribution": "uniform",
             },
         )
+        self.events.joint_params = EventTerm(
+            func=mdp.randomize_joint_parameters,
+            mode="startup",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+                "friction_distribution_params": (0.0, 0.4),
+                "armature_distribution_params": (0.0, 0.05),
+                "operation": "abs",
+                "distribution": "uniform",
+            },
+        )
 
-        self.terminations.base_contact.params["sensor_cfg"].body_names = "base"
+        self.terminations.base_contact = None
 
 
 @configclass
@@ -204,6 +223,10 @@ class AlienGoRoughEnvCfg_v0_PLAY(AlienGoRoughEnvCfg_v0):
         self.events.base_external_force_torque = None
         self.events.physics_material.params["static_friction_range"] = (0.8, 0.8)
         self.events.physics_material.params["dynamic_friction_range"] = (0.6, 0.6)
+        self.events.actuator_gains.params["stiffness_distribution_params"] = (1.0, 1.0)
+        self.events.actuator_gains.params["damping_distribution_params"] = (1.0, 1.0)
+        self.events.joint_params.params["friction_distribution_params"] = (0.2, 0.2)
+        self.events.joint_params.params["armature_distribution_params"] = (0.02, 0.02)
 
 
 @configclass
@@ -225,7 +248,6 @@ class AlienGoRoughEnvCfg_v0_PLAY_ICRA(AlienGoRoughEnvCfg_v0):
         self.curriculum.terrain_levels = None
         # disable terminations so the robot is never reset (avoids mesh tunneling on reset)
         self.terminations.time_out = None
-        self.terminations.base_contact = None
         # swap to the ICRA evaluation map
         self.scene.terrain = AssetBaseCfg(
             prim_path="/World/ground",

@@ -156,6 +156,29 @@ def feet_air_time_progress(
     return reward * (v_pr > 0.1)
 
 
+def undesired_contacts_when_command_nonzero(
+    env: ManagerBasedRLEnv,
+    threshold: float,
+    sensor_cfg: SceneEntityCfg,
+    command_name: str = "base_direction",
+) -> torch.Tensor:
+    """Penalize base/belly contact, but only while a movement command is active.
+
+    Same as :func:`undesired_contacts` (count of bodies whose contact force exceeds ``threshold``),
+    zeroed when the command is ~zero (no direction and no turn) so the robot may rest on its belly at
+    standstill without being punished.
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    net_contact_forces = contact_sensor.data.net_forces_w_history
+    is_contact = torch.max(torch.norm(net_contact_forces[:, :, sensor_cfg.body_ids], dim=-1), dim=1)[0] > threshold
+    violations = torch.sum(is_contact, dim=1)
+
+    command = env.command_manager.get_command(command_name)
+    is_moving = (torch.norm(command[:, :2], dim=1) > 0.1) | (command[:, 2].abs() > 0.1)
+
+    return violations * is_moving
+
+
 def flight_phase(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg,

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
 __all__ = [
+    "actuator_delay",
     "actuator_gains",
     "external_force_b",
     "external_torque_b",
@@ -55,6 +56,27 @@ def actuator_gains(
         stiffness = torch.where(default_stiffness != 0, stiffness / default_stiffness, stiffness)
         damping = torch.where(default_damping != 0, damping / default_damping, damping)
     return torch.cat([stiffness, damping], dim=-1)
+
+
+def actuator_delay(
+    env: ManagerBasedEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    actuator_name: str = "base_legs",
+    normalize: bool = True,
+) -> torch.Tensor:
+    """Per-env control latency (in sim steps) of a ``DelayedPDActuator``.
+
+    Reads the time-lag sampled per environment by the delayed actuator so the critic can
+    condition on the randomized latency.With ``normalize=True`` the lag is divided by
+    ``max_delay`` so it is ~[0, 1]; if the actuator has no delay (``max_delay == 0``) the
+    raw zero lag is returned. Shape: ``(num_envs, 1)``.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    actuator = asset.actuators[actuator_name]
+    lag = actuator.positions_delay_buffer.time_lags.float()
+    if normalize and actuator.cfg.max_delay > 0:
+        lag = lag / actuator.cfg.max_delay
+    return lag.unsqueeze(-1)
 
 
 def external_force_b(

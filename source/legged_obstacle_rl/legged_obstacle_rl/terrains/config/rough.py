@@ -43,6 +43,6 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
             proportion=0.1, slope_range=(0.0, 0.4), platform_width=2.0, border_width=0.25
         ),
         "hf_square_holes": HfRandomSquareHolesTerrainCfg(proportion=0.2),
-        "diamond_walkway": MeshDiamondWalkwayTerrainCfg(proportion=0.2),
+        "diamond_walkway": MeshDiamondWalkwayTerrainCfg(proportion=0.2, beam_height=0.3),
     },
 )

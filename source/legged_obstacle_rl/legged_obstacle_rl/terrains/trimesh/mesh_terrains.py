@@ -37,13 +37,13 @@ def diamond_walkway_terrain(difficulty: float, cfg) -> tuple[list[trimesh.Trimes
 
             # --- Horizontal Center Beam ---
             # Width is limited to the cell width
-            h_beam_dims = (cell_size_x, beam_width, beam_height)
-            h_beam_pos = (cell_center_x, cell_center_y, beam_height / 2.0)
+            h_beam_dims = (cell_size_x, beam_width, beam_height / 4)
+            h_beam_pos = (cell_center_x, cell_center_y, beam_height * 7.0 / 8.0)
             h_beam = trimesh.creation.box(h_beam_dims, trimesh.transformations.translation_matrix(h_beam_pos))
             meshes_list.append(h_beam)
 
             # --- Diagonal Beams ---
-            diag_dims = (diag_length, beam_width, beam_height)
+            diag_dims = (diag_length, beam_width, beam_height / 4)
 
             # Local orientations relative to the cell
             # We use the same logic as before, but add the cell's offset_x/y
@@ -55,7 +55,7 @@ def diamond_walkway_terrain(difficulty: float, cfg) -> tuple[list[trimesh.Trimes
             ]
 
             for pos_xy, rot_z in orientations:
-                matrix = trimesh.transformations.translation_matrix([pos_xy[0], pos_xy[1], beam_height / 2.0])
+                matrix = trimesh.transformations.translation_matrix([pos_xy[0], pos_xy[1], beam_height * 7.0 / 8.0])
                 matrix = trimesh.transformations.concatenate_matrices(
                     matrix, trimesh.transformations.rotation_matrix(rot_z, [0, 0, 1])
                 )

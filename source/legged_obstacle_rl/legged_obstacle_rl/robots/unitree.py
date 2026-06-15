@@ -1,7 +1,7 @@
 import copy
 
 import isaaclab.sim as sim_utils
-from isaaclab.actuators import DCMotorCfg
+from isaaclab.actuators import DelayedPDActuatorCfg
 from isaaclab.assets.articulation import ArticulationCfg
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab_assets.robots.unitree import UNITREE_GO1_CFG
@@ -38,14 +38,15 @@ ALIENGO_CFG = ArticulationCfg(
     ),
     soft_joint_pos_limit_factor=0.9,
     actuators={
-        "base_legs": DCMotorCfg(
+        # min/max_delay are in sim steps (sim.dt=0.005 -> max_delay=20 ~= 100 ms ~ one control period).
+        "base_legs": DelayedPDActuatorCfg(
             joint_names_expr=[".*_hip_joint", ".*_thigh_joint", ".*_calf_joint"],
             effort_limit=44.4,
-            saturation_effort=44.4,
-            velocity_limit=21.0,
             stiffness=40.0,
             damping=2.0,
             friction=0.0,
+            min_delay=0,
+            max_delay=20,
         ),
     },
 )
