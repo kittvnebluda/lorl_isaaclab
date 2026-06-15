@@ -103,7 +103,7 @@ and `--checkpoint` point at the Phase A teacher (resolved within the shared
 `aliengo_direction` experiment root). The student imitates the teacher's actions
 while acting on corrupted proprioception.
 
-### Play / Evaluate (skrl)
+### Play  (skrl)
 
 ```bash
 python scripts/skrl/play.py \
@@ -116,22 +116,59 @@ python scripts/skrl/play.py \
 
 `--teleop` enables keyboard control (see [Teleop Controls](#teleop-controls)).
 
-### Deploy to MuJoCo (Sim2Sim)
+### Play (rsl_rl)
+
+Teacher:
 
 ```bash
-python scripts/skrl/deploy.py \
-    --task=LORL-Go1Rough-MJ-v0 \
-    --checkpoint PATH \
-    [--config path/to/agent_cfg.yaml] \
+python scripts/rsl_rl/play.py
+    --task LORL-AlienGoDirection-RL-Play-v0 \
+    --checkpoint logs/rsl_rl/aliengo_direction/<date-time>_teacher/model_X.pt \
+    [--num_envs 50] \
     [--teleop] \
     [--real-time]
 ```
 
-Loads a checkpoint trained in IsaacLab and runs it in MuJoCo. Records action history and plots at end of episode.
+Student:
+
+```bash
+python scripts/rsl_rl/play.py
+    --task LORL-AlienGoDirection-RL-Play-v0 \
+    --agent rsl_rl_distillation_cfg_entry_point \
+    --checkpoint logs/rsl_rl/aliengo_direction/<date-time>_student/model_X.pt \
+    [--num_envs 50] \
+    [--teleop] \
+    [--real-time]
+```
+
+`--teleop` enables keyboard control (see [Teleop Controls](#teleop-controls)).
+
+### Deploy to MuJoCo
+
+skrl:
+
+```bash
+python scripts/skrl/deploy_mujoco.py \
+    --task=LORL-Go1Rough-MJ-v0 \
+    --checkpoint PATH \
+    --teleop \
+    --real-time \
+    [--config path/to/agent_cfg.yaml]
+```
+
+rsl_rl:
+
+```bash
+python scripts/rsl_rl/deploy_mujoco.py \
+    --task LORL-Aliengo-Direction-MJ-v0 \
+    --checkpoint logs/rsl_rl/aliengo_direction/<date-time>_student/exported/policy.pt \
+    --real-time \
+    --teleop
+```
 
 ## Teleop Controls
 
-Available in both `play.py` (`--teleop`) and `deploy.py` (`--teleop`).
+Available in both `play.py` (`--teleop`) and `deploy_mujoco.py` (`--teleop`).
 Requires Linux evdev python package.
 
 | Key | Action | Range |
@@ -146,7 +183,7 @@ Requires Linux evdev python package.
 ## MuJoCo Setup
 
 ```bash
-pip install gymnasium[mujoco] skrl
+pip install gymnasium[mujoco]
 ```
 
 ## ROS2 / Gazebo
