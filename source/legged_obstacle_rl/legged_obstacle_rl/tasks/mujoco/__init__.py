@@ -6,9 +6,14 @@ def register(id: str, cls_path: str):
 
 
 # Argo Policy
-register("LORL-Go1Argo-MJ-v0", "go1_argo_env:Go1ArgoEnv")
-register("LORL-Go1ArgoH-MJ-v0", "go1_argo_env:Go1ArgoHEnv")
+register("LORL-Go1-Argo-MJ-v0", "go1.argo_env:Go1ArgoEnv")
+register("LORL-Go1-ArgoH-MJ-v0", "go1.argo_env:Go1ArgoHEnv")
 
-# Rough Policy
-register("LORL-Go1Rough-Flat-MJ-v0", "rough.flat_env:Go1RoughFlatEnv")
-register("LORL-Go1Rough-HField-MJ-v0", "rough.hfield_env:Go1RoughHFieldEnv")
+# Velocity Policy
+register("LORL-Go1-Velocity-Flat-MJ-v0", "go1.velocity_env:Go1VelocityFlatEnv")
+register("LORL-Go1-Velocity-HField-MJ-v0", "go1.velocity_env:Go1VelocityHFieldEnv")
+
+# Direction Policy
+register("LORL-Aliengo-Direction-MJ-v0", "aliengo.direction_env:AliengoDirectionProprioEnv")
+register("LORL-Aliengo-Direction-ICRA-Flat-MJ-v0", "aliengo.direction_env:AliengoDirectionProprioIcraFlatEnv")
+register("LORL-Aliengo-Direction-ICRA-Sloped-MJ-v0", "aliengo.direction_env:AliengoDirectionProprioIcraSlopedEnv")
